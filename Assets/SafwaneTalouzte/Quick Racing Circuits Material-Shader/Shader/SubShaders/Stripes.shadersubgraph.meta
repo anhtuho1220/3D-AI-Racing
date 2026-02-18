@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: 48156f179ba83ea4bb5171fe7e9ded7e
+ScriptedImporter:
+  internalIDToNameTable: []
+  externalObjects: {}
+  serializedVersion: 2
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+  script: {fileID: 11500000, guid: 60072b568d64c40a485e0fc55012dc9f, type: 3}
+AssetOrigin:
+  serializedVersion: 1
+  productId: 346466
+  packageName: Quick Racing Circuits Material/Shader
+  packageVersion: 1.0
+  assetPath: Assets/SafwaneTalouzte/Quick Racing Circuits Material-Shader/Shader/SubShaders/Stripes.shadersubgraph
+  uploadId: 824898
