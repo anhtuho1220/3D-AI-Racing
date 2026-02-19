@@ -37,7 +37,7 @@ public class TrackCheckpoints : MonoBehaviour
         if (index == nextCheckpointIndex)
         {
             nextCheckpointIndex = (nextCheckpointIndex + 1) % checkpointList.Count;
-            Debug.Log($"Checkpoint!");
+            Debug.Log($"Checkpoint!" + index);
         } else {
             Debug.Log($"Wrong Checkpoint!");
         }

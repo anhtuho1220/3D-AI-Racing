@@ -1,120 +1,203 @@
+using System;
+using System.Collections.Generic;
+using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Splines;
-using Unity.Mathematics;
 
-public static class WallGenerator
+[ExecuteInEditMode]
+[RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
+public class WallGenerator : MonoBehaviour
 {
-    public static GameObject GenerateMeshWall(
-        string name, 
-        Transform parent, 
-        Spline spline, 
-        Material assignedMat, 
-        Color fallbackColor, 
-        float trackWidth, 
-        float wallOffset, 
-        float wallThickness, 
-        float wallHeight, 
-        int wallResolution, 
-        bool enableColliders, 
-        bool isLeft,
-        GameObject existingObj = null)
+    [SerializeField]
+    private SplineContainer m_SplineContainer;
+
+    [SerializeField]
+    private Material m_Material;
+    
+    [SerializeField]
+    private float m_TrackWidth = 10f;
+
+    [SerializeField]
+    private float m_WallOffset = 0f;
+
+    [SerializeField]
+    private float m_WallThickness = 0.5f;
+
+    [SerializeField]
+    private float m_WallHeight = 1f;
+
+    [SerializeField]
+    private int m_WallResolution = 10;
+    
+    [SerializeField]
+    private bool m_EnableColliders = true;
+    
+    [SerializeField]
+    private bool m_IsLeft = true;
+
+    private Mesh m_Mesh;
+    private bool m_RebuildRequested = false;
+
+    // Properties for programmatic access
+    public SplineContainer Container
     {
-        // Create or Reuse Object
-        GameObject wallObj = existingObj;
-        if (wallObj == null)
-        {
-            wallObj = new GameObject(name);
-            wallObj.transform.parent = parent;
-            wallObj.transform.localPosition = Vector3.zero;
-            wallObj.transform.localRotation = Quaternion.identity;
-        }
-        else
-        {
-             // Ensure correct name and parent just in case
-             wallObj.name = name;
-             if (wallObj.transform.parent != parent)
-             {
-                 wallObj.transform.parent = parent;
-                 wallObj.transform.localPosition = Vector3.zero;
-                 wallObj.transform.localRotation = Quaternion.identity;
-             }
-        }
+        get => m_SplineContainer;
+        set { if (m_SplineContainer != value) { Unsubscribe(); m_SplineContainer = value; Subscribe(); Dirty(); } }
+    }
+    
+    public Material WallMaterial
+    {
+        get => m_Material;
+        set { if (m_Material != value) { m_Material = value; GetComponent<MeshRenderer>().sharedMaterial = m_Material; } }
+    }
+    
+    public float TrackWidth { get => m_TrackWidth; set { if (m_TrackWidth != value) { m_TrackWidth = value; Dirty(); } } }
+    public float WallOffset { get => m_WallOffset; set { if (m_WallOffset != value) { m_WallOffset = value; Dirty(); } } }
+    public float WallThickness { get => m_WallThickness; set { if (m_WallThickness != value) { m_WallThickness = value; Dirty(); } } }
+    public float WallHeight { get => m_WallHeight; set { if (m_WallHeight != value) { m_WallHeight = value; Dirty(); } } }
+    public int WallResolution { get => m_WallResolution; set { if (m_WallResolution != value) { m_WallResolution = value; Dirty(); } } }
+    public bool EnableColliders { get => m_EnableColliders; set { if (m_EnableColliders != value) { m_EnableColliders = value; Dirty(); } } }
+    public bool IsLeft { get => m_IsLeft; set { if (m_IsLeft != value) { m_IsLeft = value; Dirty(); } } }
 
-        MeshFilter mf = wallObj.GetComponent<MeshFilter>();
-        if (mf == null) mf = wallObj.AddComponent<MeshFilter>();
-        
-        MeshRenderer mr = wallObj.GetComponent<MeshRenderer>();
-        if (mr == null) mr = wallObj.AddComponent<MeshRenderer>();
+    private void OnEnable()
+    {
+        if (m_SplineContainer == null)
+            m_SplineContainer = GetComponentInParent<SplineContainer>();
+            
+        Subscribe();
+        Dirty();
+    }
 
-        // Material Setup
-        if (assignedMat != null)
+    private void OnDisable()
+    {
+        Unsubscribe();
+    }
+
+    private void Subscribe()
+    {
+        if (m_SplineContainer != null)
         {
-            mr.sharedMaterial = assignedMat;
+            Spline.Changed += OnSplineChanged;
+            SplineContainer.SplineAdded += OnSplineContainerAdded;
+            SplineContainer.SplineRemoved += OnSplineContainerRemoved;
+            SplineContainer.SplineReordered += OnSplineContainerReordered;
         }
-        else
+    }
+
+    private void Unsubscribe()
+    {
+        Spline.Changed -= OnSplineChanged;
+        SplineContainer.SplineAdded -= OnSplineContainerAdded;
+        SplineContainer.SplineRemoved -= OnSplineContainerRemoved;
+        SplineContainer.SplineReordered -= OnSplineContainerReordered;
+    }
+
+    private void OnSplineChanged(Spline spline, int index, SplineModification modification)
+    {
+        if (m_SplineContainer != null)
         {
-            Shader shader = Shader.Find("Sprites/Default");
-            if (shader == null) shader = Shader.Find("Standard");
-            Material mat = new Material(shader);
-            mat.name = name + "_Mat";
-            mat.color = fallbackColor;
-            if (shader.name == "Standard")
+            foreach (var s in m_SplineContainer.Splines)
             {
-                mat.SetFloat("_Mode", 3);
-                mat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-                mat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-                mat.SetInt("_ZWrite", 0);
-                mat.DisableKeyword("_ALPHATEST_ON");
-                mat.EnableKeyword("_ALPHABLEND_ON");
-                mat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
-                mat.renderQueue = 3000;
+                if (s == spline)
+                {
+                    Dirty();
+                    break;
+                }
             }
-            mr.sharedMaterial = mat;
+        }
+    }
+
+    private void OnSplineContainerAdded(SplineContainer container, int index)
+    {
+        if (container == m_SplineContainer) Dirty();
+    }
+
+    private void OnSplineContainerRemoved(SplineContainer container, int index)
+    {
+        if (container == m_SplineContainer) Dirty();
+    }
+
+    private void OnSplineContainerReordered(SplineContainer container, int index1, int index2)
+    {
+        if (container == m_SplineContainer) Dirty();
+    }
+    
+    public void Dirty()
+    {
+        m_RebuildRequested = true;
+    }
+
+    private void Update()
+    {
+        if (m_RebuildRequested)
+        {
+            Rebuild();
+        }
+    }
+
+    public void Rebuild()
+    {
+        m_RebuildRequested = false;
+
+        if (m_SplineContainer == null) return;
+        Spline spline = m_SplineContainer.Spline;
+        if (spline == null) return;
+
+        if (m_Mesh == null)
+        {
+            m_Mesh = new Mesh();
+            m_Mesh.name = "WallMesh";
+            GetComponent<MeshFilter>().sharedMesh = m_Mesh;
+        }
+        
+        MeshRenderer mr = GetComponent<MeshRenderer>();
+        if (mr.sharedMaterial != m_Material)
+        {
+             mr.sharedMaterial = m_Material;
         }
 
-        // Mesh Generation
-        int segmentsPerKnot = wallResolution; 
+        // Logic from original GenerateMeshWall
+        
+        int segmentsPerKnot = m_WallResolution; 
         if (segmentsPerKnot < 1) segmentsPerKnot = 1;
         
-        // Use spline count instead of pointCount (which was a member of RandomTrackGenerator)
-        // We can approximate pointCount by checking knots, assuming 1 knot per point.
-        // Actually, RandomTrackGenerator passed pointCount separately, but here we can just use the spline's knot count
-        // OR we can pass segmentsPerKnot directly if we want tight control.
-        // The original code used `pointCount * segmentsPerKnot`. `pointCount` essentially == `spline.Count` in the generator loop.
-        int pointCount = spline.Count;
-        int totalSegments = pointCount * segmentsPerKnot;
+        int pointCount = spline.Count; // Assuming 1 knot per point based on original logic
+        // Original logic: "Use spline count instead of pointCount (which was a member of RandomTrackGenerator)"
+        // "We can approximate pointCount by checking knots"
         
-        // 4 vertices per segment (Tube profile: InnerBottom, InnerTop, OuterTop, OuterBottom)
+        // Wait, RandomTrackGenerator passes pointCount. But here we just want to follow the spline resolution.
+        // Let's use Spline length / resolution logic OR stick to Knot * Resolution.
+        // The original code used `pointCount * segmentsPerKnot`. `pointCount` was `spline.Count`.
+        // So Spline.Count * Resolution is fine.
+        
+        int totalSegments = pointCount * segmentsPerKnot;
+
+        // However, if the spline is very long, maybe we want resolution based on length?
+        // RandomTrackGenerator logic was: pointCount is the number of knots.
+        // Let's stick to the previous implementation logic regarding segment count to preserve behavior.
+
         Vector3[] vertices = new Vector3[(totalSegments + 1) * 4];
-        // 4 faces * 2 tris * 3 indices = 24 indices per segment
         int[] triangles = new int[totalSegments * 24];
         Vector2[] uvs = new Vector2[vertices.Length];
-
-        // Ensure spline is closed for calculations? The original code did `spline.GetLength()`, but `t` was 0..1 based on loop count.
         
         for (int i = 0; i <= totalSegments; i++)
         {
             float t = (float)i / totalSegments;
-            // Handle wrap around perfectly
-            if (i == totalSegments) t = 0f; 
+            if (i == totalSegments) t = 0f; // Wrap for position
 
-            // Evaluate Spline
             float3 posFunc, tangentFunc, upFunc;
             SplineUtility.Evaluate(spline, t, out posFunc, out tangentFunc, out upFunc);
             
             float3 tangent = math.normalize(tangentFunc);
-            float3 up = new float3(0, 1, 0); // Force world up for walls
+            float3 up = new float3(0, 1, 0); // Force world up
             float3 right = math.normalize(math.cross(up, tangent));
 
-            // Offsets
-            float offsetInner = (trackWidth / 2f) + wallOffset;
-            float offsetOuter = offsetInner + wallThickness;
-            
-            // Calculate 4 corners
+            float offsetInner = (m_TrackWidth / 2f) + m_WallOffset;
+            float offsetOuter = offsetInner + m_WallThickness;
             
             float3 posInner, posOuter;
             
-            if (isLeft)
+            if (m_IsLeft)
             {
                 posInner = posFunc - right * offsetInner;
                 posOuter = posFunc - right * offsetOuter;
@@ -126,23 +209,22 @@ public static class WallGenerator
             }
             
             Vector3 vInnerBottom = posInner;
-            Vector3 vInnerTop = posInner + (float3)up * wallHeight;
-            Vector3 vOuterTop = posOuter + (float3)up * wallHeight;
+            Vector3 vInnerTop = posInner + (float3)up * m_WallHeight;
+            Vector3 vOuterTop = posOuter + (float3)up * m_WallHeight;
             Vector3 vOuterBottom = posOuter;
 
-            // Assign to array in CCW order for the cross-section
             int baseIdx = i * 4;
             
-            if (isLeft)
+            // UVs
+            float u = (float)i / totalSegments * 10f; // Arbitrary tiling factor from original
+
+            if (m_IsLeft)
             {
-                // CCW Loop: InnerBottom -> InnerTop -> OuterTop -> OuterBottom
                 vertices[baseIdx + 0] = vInnerBottom;
                 vertices[baseIdx + 1] = vInnerTop;
                 vertices[baseIdx + 2] = vOuterTop;
                 vertices[baseIdx + 3] = vOuterBottom;
                 
-                // UVs
-                float u = (float)i / totalSegments * 10f;
                 uvs[baseIdx + 0] = new Vector2(u, 0);
                 uvs[baseIdx + 1] = new Vector2(u, 1);
                 uvs[baseIdx + 2] = new Vector2(u, 1);
@@ -150,39 +232,32 @@ public static class WallGenerator
             }
             else
             {
-                // CCW Loop: OuterBottom -> OuterTop -> InnerTop -> InnerBottom
                 vertices[baseIdx + 0] = vOuterBottom;
                 vertices[baseIdx + 1] = vOuterTop;
                 vertices[baseIdx + 2] = vInnerTop;
                 vertices[baseIdx + 3] = vInnerBottom;
                 
-                // UVs
-                float u = (float)i / totalSegments * 10f;
                 uvs[baseIdx + 0] = new Vector2(u, 0);
                 uvs[baseIdx + 1] = new Vector2(u, 1);
                 uvs[baseIdx + 2] = new Vector2(u, 1);
                 uvs[baseIdx + 3] = new Vector2(u, 0);
             }
 
-            // Triangles
             if (i < totalSegments)
             {
                 int currentBase = i * 4;
                 int nextBase = (i + 1) * 4;
                 int tIdx = i * 24;
 
-                // 4 Faces
                 for (int j = 0; j < 4; j++)
                 {
                     int current = j;
                     int next = (j + 1) % 4;
                     
-                    // Triangle 1
                     triangles[tIdx++] = currentBase + current;
                     triangles[tIdx++] = currentBase + next;
                     triangles[tIdx++] = nextBase + next;
                     
-                    // Triangle 2
                     triangles[tIdx++] = currentBase + current;
                     triangles[tIdx++] = nextBase + next;
                     triangles[tIdx++] = nextBase + current;
@@ -190,31 +265,24 @@ public static class WallGenerator
             }
         }
 
-        Mesh mesh = mf.sharedMesh;
-        if (mesh == null)
+        m_Mesh.Clear();
+        m_Mesh.vertices = vertices;
+        m_Mesh.triangles = triangles;
+        m_Mesh.uv = uvs;
+        m_Mesh.RecalculateNormals();
+        
+        GetComponent<MeshFilter>().sharedMesh = m_Mesh;
+        
+        if (m_EnableColliders)
         {
-            mesh = new Mesh();
-            mesh.name = name + "_Mesh";
+            MeshCollider mc = GetComponent<MeshCollider>();
+            if (mc == null) mc = gameObject.AddComponent<MeshCollider>();
+            mc.sharedMesh = m_Mesh;
         }
         else
         {
-            mesh.Clear();
+             MeshCollider mc = GetComponent<MeshCollider>();
+             if (mc != null) DestroyImmediate(mc);
         }
-
-        mesh.vertices = vertices;
-        mesh.triangles = triangles;
-        mesh.uv = uvs;
-        mesh.RecalculateNormals();
-        
-        mf.sharedMesh = mesh;
-        
-        if (enableColliders)
-        {
-            MeshCollider mc = wallObj.GetComponent<MeshCollider>();
-            if (mc == null) mc = wallObj.AddComponent<MeshCollider>();
-            mc.sharedMesh = mesh;
-        }
-
-        return wallObj;
     }
 }

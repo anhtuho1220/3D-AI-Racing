@@ -1,5 +1,5 @@
 using UnityEngine;
-using UnityEngine.Splines; // This contains SplineExtrude
+using UnityEngine.Splines; 
 using Unity.Mathematics;
 
 [RequireComponent(typeof(SplineContainer))]
@@ -7,14 +7,17 @@ public class RandomTrackGenerator : MonoBehaviour
 {
     [Header("Track Shape")]
     public int pointCount = 15;
+    public float minPointDistance = 10f;
     public float radius = 50f;
     public float variation = 15f;
     public float minNoiseFreq = 1.0f;
-    public float maxNoiseFreq = 4.0f;
+    public float maxNoiseFreq = 10.0f;
     
     [Header("Road Settings")]
     public float trackWidth = 10f;
-    // Banking removed
+    public Material roadMaterial; // Material for the road
+    public float roadResolution = 1.0f;
+    public float textureScale = 64f;
 
     [Header("Wall Settings")]
     public float wallThickness = 0.5f;
@@ -28,6 +31,7 @@ public class RandomTrackGenerator : MonoBehaviour
     [Header("Game Elements")]
     public GameObject checkpointPrefab;
     public int checkpointCount = 10;
+    public float checkpointForwardOffset = 0f;
     public float checkpointYOffset = 1f;
     public float checkpointYRotation = 90f;
     public GameObject carPrefab;
@@ -35,7 +39,7 @@ public class RandomTrackGenerator : MonoBehaviour
     public float carRotationY = 0f;
 
     private SplineContainer splineContainer;
-    private SplineExtrude extrudeComponent;
+    private SplineRoadGenerator roadGenerator;
 
     // Wall References
     public GameObject leftWallObj;
@@ -57,8 +61,8 @@ public class RandomTrackGenerator : MonoBehaviour
         float noiseFreq = UnityEngine.Random.Range(minNoiseFreq, maxNoiseFreq);
         
         // Random Aspect Ratio (Stretch X or Z) to break circular symmetry
-        float scaleX = UnityEngine.Random.Range(0.8f, 1.8f);
-        float scaleZ = UnityEngine.Random.Range(0.8f, 1.8f);
+        float scaleX = UnityEngine.Random.Range(0.5f, 2f);
+        float scaleZ = UnityEngine.Random.Range(0.5f, 2f);
 
         bool isClockwise = UnityEngine.Random.value > 0.5f;
 
@@ -85,6 +89,28 @@ public class RandomTrackGenerator : MonoBehaviour
             float z = math.sin(angle) * effectiveRadius * scaleZ;
 
             points.Add(new float3(x, 0, z));
+        }
+
+        // Filter points to prevent overlapping segments
+        var filteredPoints = new System.Collections.Generic.List<float3>();
+        if (points.Count > 0)
+        {
+            filteredPoints.Add(points[0]);
+            for (int i = 1; i < points.Count; i++)
+            {
+                if (math.distance(points[i], filteredPoints[filteredPoints.Count - 1]) >= minPointDistance)
+                {
+                    filteredPoints.Add(points[i]);
+                }
+            }
+            
+            // Check closure (last point vs first point)
+            if (filteredPoints.Count > 2 && math.distance(filteredPoints[filteredPoints.Count - 1], filteredPoints[0]) < minPointDistance)
+            {
+                filteredPoints.RemoveAt(filteredPoints.Count - 1);
+            }
+
+            points = filteredPoints;
         }
 
         if (isClockwise)
@@ -120,57 +146,77 @@ public class RandomTrackGenerator : MonoBehaviour
             spline[i] = knot;
         }
 
-        SetupExtruder();
+        SetupRoadLoft();
         GenerateWalls();
         PlaceCar();
         GenerateCheckpoints();
     }
 
-    void SetupExtruder()
+    void SetupRoadLoft()
     {
-        if (!TryGetComponent(out extrudeComponent))
-            extrudeComponent = gameObject.AddComponent<SplineExtrude>();
 
-        extrudeComponent.Container = splineContainer;
-        extrudeComponent.Radius = trackWidth / 2f; 
-        extrudeComponent.Sides = 2; // Flat road
-        extrudeComponent.Rebuild();
+
+
+
+        if (!TryGetComponent(out roadGenerator))
+            roadGenerator = gameObject.AddComponent<SplineRoadGenerator>();
+
+        roadGenerator.Container = splineContainer;
+        roadGenerator.Width = trackWidth;
+        roadGenerator.RoadMaterial = roadMaterial;
+        roadGenerator.Resolution = roadResolution;
+        roadGenerator.TextureScale = textureScale;
+        
+        roadGenerator.Rebuild();
     }
 
     void GenerateWalls()
     {
-        // Reuse existing objects
-        leftWallObj = WallGenerator.GenerateMeshWall(
-            "LeftWall", 
-            transform, 
-            splineContainer.Spline, 
-            leftWallMat, 
-            new Color(1f, 0.92f, 0.016f, 0.3f), 
-            trackWidth, 
-            wallOffset, 
-            wallThickness, 
-            wallHeight, 
-            wallResolution, 
-            enableWallColliders, 
-            true,
-            leftWallObj
-        );
+        // Update Left Wall
+        if (leftWallObj == null)
+        {
+            leftWallObj = new GameObject("LeftWall");
+            leftWallObj.transform.parent = transform;
+            leftWallObj.transform.localPosition = Vector3.zero;
+            leftWallObj.transform.localRotation = Quaternion.identity;
+        }
 
-        rightWallObj = WallGenerator.GenerateMeshWall(
-            "RightWall", 
-            transform, 
-            splineContainer.Spline, 
-            rightWallMat, 
-            new Color(1f, 0.64f, 0f, 0.3f), 
-            trackWidth, 
-            wallOffset, 
-            wallThickness, 
-            wallHeight, 
-            wallResolution, 
-            enableWallColliders, 
-            false,
-            rightWallObj
-        );
+        WallGenerator leftWg = leftWallObj.GetComponent<WallGenerator>();
+        if (leftWg == null) leftWg = leftWallObj.AddComponent<WallGenerator>();
+
+        leftWg.Container = splineContainer;
+        leftWg.WallMaterial = leftWallMat != null ? leftWallMat : new Material(Shader.Find("Standard")) { color = new Color(1f, 0.92f, 0.016f, 0.3f) };
+        leftWg.TrackWidth = trackWidth;
+        leftWg.WallOffset = wallOffset;
+        leftWg.WallThickness = wallThickness;
+        leftWg.WallHeight = wallHeight;
+        leftWg.WallResolution = wallResolution;
+        leftWg.EnableColliders = enableWallColliders;
+        leftWg.IsLeft = true;
+        leftWg.Rebuild();
+
+        // Update Right Wall
+        if (rightWallObj == null)
+        {
+            rightWallObj = new GameObject("RightWall");
+            rightWallObj.transform.parent = transform;
+            rightWallObj.transform.localPosition = Vector3.zero;
+            rightWallObj.transform.localRotation = Quaternion.identity;
+        }
+
+        WallGenerator rightWg = rightWallObj.GetComponent<WallGenerator>();
+        if (rightWg == null) rightWg = rightWallObj.AddComponent<WallGenerator>();
+
+        rightWg.Container = splineContainer;
+        rightWg.WallMaterial = rightWallMat != null ? rightWallMat : new Material(Shader.Find("Standard")) { color = new Color(1f, 0.64f, 0f, 0.3f) };
+        rightWg.TrackWidth = trackWidth;
+        rightWg.WallOffset = wallOffset;
+        rightWg.WallThickness = wallThickness;
+        rightWg.WallHeight = wallHeight;
+        rightWg.WallResolution = wallResolution;
+        rightWg.EnableColliders = enableWallColliders;
+        rightWg.IsLeft = false;
+        rightWg.Rebuild();
     }
 
     void GenerateCheckpoints()
@@ -195,10 +241,17 @@ public class RandomTrackGenerator : MonoBehaviour
         if (checkpointPrefab == null) return;
 
         Spline spline = splineContainer.Spline;
+        float splineLength = spline.GetLength();
         
         for (int i = 0; i < checkpointCount; i++)
         {
             float t = (float)i / checkpointCount;
+            // Add offset based on spline length
+            if (splineLength > 0)
+            {
+                t = (t + (checkpointForwardOffset / splineLength)) % 1f;
+                if (t < 0) t += 1f; // Handle negative offset if needed
+            }
             
             float3 posFunc, tangentFunc, upFunc;
             SplineUtility.Evaluate(spline, t, out posFunc, out tangentFunc, out upFunc);
@@ -250,6 +303,5 @@ public class RandomTrackGenerator : MonoBehaviour
             }
         }
     }
-
-
 }
+
