@@ -1,21 +1,10 @@
-/*
-MESSAGE FROM CREATOR: This script was coded by Mena. You can use it in your games either these are commercial or
-personal projects. You can even add or remove functions as you wish. However, you cannot sell copies of this
-script by itself, since it is originally distributed as a free product.
-I wish you the best for your project. Good luck!
-
-P.S: If you need more cars, you can check my other vehicle assets on the Unity Asset Store, perhaps you could find
-something useful for your game. Best regards, Mena.
-*/
-
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
-public class PrometeoCarController : MonoBehaviour
+public class PrometeoAIController : MonoBehaviour
 {
 
     //CAR SETUP
@@ -105,23 +94,10 @@ public class PrometeoCarController : MonoBehaviour
       public AudioSource tireScreechSound; // This variable stores the sound of the tire screech (when the car is drifting).
       float initialCarEngineSoundPitch; // Used to store the initial pitch of the car engine sound.
 
-    //CONTROLS
-
-      [Space(20)]
-      //[Header("CONTROLS")]
-      [Space(10)]
-      //The following variables lets you to set up touch controls for mobile devices.
-      public bool useTouchControls = false;
-      public GameObject throttleButton;
-      PrometeoTouchInput throttlePTI;
-      public GameObject reverseButton;
-      PrometeoTouchInput reversePTI;
-      public GameObject turnRightButton;
-      PrometeoTouchInput turnRightPTI;
-      public GameObject turnLeftButton;
-      PrometeoTouchInput turnLeftPTI;
-      public GameObject handbrakeButton;
-      PrometeoTouchInput handbrakePTI;
+    //AI / INPUT VARIABLES
+      private float inputSteering = 0f;
+      private float inputThrottle = 0f;
+      private bool inputHandbrake = false;
 
     //CAR DATA
 
@@ -144,7 +120,7 @@ public class PrometeoCarController : MonoBehaviour
       float localVelocityZ;
       float localVelocityX;
       bool deceleratingCar;
-      bool touchControlsSetup = false;
+      
       /*
       The following variables are used to store information about sideways friction of the wheels (such as
       extremumSlip,extremumValue, asymptoteSlip, asymptoteValue and stiffness). We change this values to
@@ -241,26 +217,6 @@ public class PrometeoCarController : MonoBehaviour
             RRWTireSkid.emitting = false;
           }
         }
-
-        if(useTouchControls){
-          if(throttleButton != null && reverseButton != null &&
-          turnRightButton != null && turnLeftButton != null
-          && handbrakeButton != null){
-
-            throttlePTI = throttleButton.GetComponent<PrometeoTouchInput>();
-            reversePTI = reverseButton.GetComponent<PrometeoTouchInput>();
-            turnLeftPTI = turnLeftButton.GetComponent<PrometeoTouchInput>();
-            turnRightPTI = turnRightButton.GetComponent<PrometeoTouchInput>();
-            handbrakePTI = handbrakeButton.GetComponent<PrometeoTouchInput>();
-            touchControlsSetup = true;
-
-          }else{
-            String ex = "Touch controls are not completely set up. You must drag and drop your scene buttons in the" +
-            " PrometeoCarController component.";
-            Debug.LogWarning(ex);
-          }
-        }
-
     }
 
     // Update is called once per frame
@@ -277,102 +233,66 @@ public class PrometeoCarController : MonoBehaviour
       localVelocityZ = transform.InverseTransformDirection(carRigidbody.linearVelocity).z;
 
       //CAR PHYSICS
-
-      /*
-      The next part is regarding to the car controller. First, it checks if the user wants to use touch controls (for
-      mobile devices) or analog input controls (WASD + Space).
-
-      The following methods are called whenever a certain key is pressed. For example, in the first 'if' we call the
-      method GoForward() if the user has pressed W.
-
-      In this part of the code we specify what the car needs to do if the user presses W (throttle), S (reverse),
-      A (turn left), D (turn right) or Space bar (handbrake).
-      */
-      if (useTouchControls && touchControlsSetup){
-
-        if(throttlePTI.buttonPressed){
+      
+      // Throttle Handling
+      if (inputThrottle > 0)
+      {
           CancelInvoke("DecelerateCar");
           deceleratingCar = false;
           GoForward();
-        }
-        if(reversePTI.buttonPressed){
+      }
+      else if (inputThrottle < 0)
+      {
           CancelInvoke("DecelerateCar");
           deceleratingCar = false;
           GoReverse();
-        }
-
-        if(turnLeftPTI.buttonPressed){
-          TurnLeft();
-        }
-        if(turnRightPTI.buttonPressed){
-          TurnRight();
-        }
-        if(handbrakePTI.buttonPressed){
-          CancelInvoke("DecelerateCar");
-          deceleratingCar = false;
-          Handbrake();
-        }
-        if(!handbrakePTI.buttonPressed){
-          RecoverTraction();
-        }
-        if((!throttlePTI.buttonPressed && !reversePTI.buttonPressed)){
+      }
+      else
+      {
           ThrottleOff();
-        }
-        if((!reversePTI.buttonPressed && !throttlePTI.buttonPressed) && !handbrakePTI.buttonPressed && !deceleratingCar){
-          InvokeRepeating("DecelerateCar", 0f, 0.1f);
-          deceleratingCar = true;
-        }
-        if(!turnLeftPTI.buttonPressed && !turnRightPTI.buttonPressed && steeringAxis != 0f){
-          ResetSteeringAngle();
-        }
-
-      }else{
-
-        var keyboard = Keyboard.current;
-        if (keyboard == null) return;
-
-        if(keyboard.wKey.isPressed){
-          CancelInvoke("DecelerateCar");
-          deceleratingCar = false;
-          GoForward();
-        }
-        if(keyboard.sKey.isPressed){
-          CancelInvoke("DecelerateCar");
-          deceleratingCar = false;
-          GoReverse();
-        }
-
-        if(keyboard.aKey.isPressed){
-          TurnLeft();
-        }
-        if(keyboard.dKey.isPressed){
-          TurnRight();
-        }
-        if(keyboard.spaceKey.isPressed){
-          CancelInvoke("DecelerateCar");
-          deceleratingCar = false;
-          Handbrake();
-        }
-        if(keyboard.spaceKey.wasReleasedThisFrame){
-          RecoverTraction();
-        }
-        if((!keyboard.sKey.isPressed && !keyboard.wKey.isPressed)){
-          ThrottleOff();
-        }
-        if((!keyboard.sKey.isPressed && !keyboard.wKey.isPressed) && !keyboard.spaceKey.isPressed && !deceleratingCar){
-          InvokeRepeating("DecelerateCar", 0f, 0.1f);
-          deceleratingCar = true;
-        }
-        if(!keyboard.aKey.isPressed && !keyboard.dKey.isPressed && steeringAxis != 0f){
-          ResetSteeringAngle();
-        }
-
+          if (!inputHandbrake && !deceleratingCar)
+          {
+              InvokeRepeating("DecelerateCar", 0f, 0.1f);
+              deceleratingCar = true;
+          }
       }
 
+      // Steering Handling
+      if (inputSteering < 0)
+      {
+          TurnLeft();
+      }
+      else if (inputSteering > 0)
+      {
+          TurnRight();
+      }
+      else if (steeringAxis != 0f)
+      {
+          ResetSteeringAngle();
+      }
 
+      // Handbrake Handling
+      if (inputHandbrake)
+      {
+          CancelInvoke("DecelerateCar");
+          deceleratingCar = false;
+          Handbrake();
+      }
+      else
+      {
+          RecoverTraction();
+      }
+      
       // We call the method AnimateWheelMeshes() in order to match the wheel collider movements with the 3D meshes of the wheels.
       AnimateWheelMeshes();
 
+    }
+
+    public void SetInputs(float steering, float throttle, bool handbrake)
+    {
+        inputSteering = Mathf.Clamp(steering, -1f, 1f);
+        inputThrottle = Mathf.Clamp(throttle, -1f, 1f);
+        inputHandbrake = handbrake;
     }
 
     // This method converts the car speed data from float to string, and then set the text of the UI carSpeedText with this value.
@@ -428,6 +348,9 @@ public class PrometeoCarController : MonoBehaviour
 
     //The following method turns the front car wheels to the left. The speed of this movement will depend on the steeringSpeed variable.
     public void TurnLeft(){
+      // Adapted for AI: Use inputSteering magnitude if needed, but keeping original accumulation logic for smooth turning
+      // We can use inputSteering to cap the turn if we wanted analog control, but for now we treat inputSteering as "pressing the stick"
+      
       steeringAxis = steeringAxis - (Time.deltaTime * 10f * steeringSpeed);
       if(steeringAxis < -1f){
         steeringAxis = -1f;
@@ -524,13 +447,13 @@ public class PrometeoCarController : MonoBehaviour
         if(Mathf.RoundToInt(carSpeed) < maxSpeed){
           //Apply positive torque in all wheels to go forward if maxSpeed has not been reached.
           frontLeftCollider.brakeTorque = 0;
-          frontLeftCollider.motorTorque = (accelerationMultiplier * 50f) * throttleAxis;
+          frontLeftCollider.motorTorque = (accelerationMultiplier * 50f) * throttleAxis * Mathf.Clamp01(inputThrottle); // Scaled by input if desired
           frontRightCollider.brakeTorque = 0;
-          frontRightCollider.motorTorque = (accelerationMultiplier * 50f) * throttleAxis;
+          frontRightCollider.motorTorque = (accelerationMultiplier * 50f) * throttleAxis * Mathf.Clamp01(inputThrottle);
           rearLeftCollider.brakeTorque = 0;
-          rearLeftCollider.motorTorque = (accelerationMultiplier * 50f) * throttleAxis;
+          rearLeftCollider.motorTorque = (accelerationMultiplier * 50f) * throttleAxis * Mathf.Clamp01(inputThrottle);
           rearRightCollider.brakeTorque = 0;
-          rearRightCollider.motorTorque = (accelerationMultiplier * 50f) * throttleAxis;
+          rearRightCollider.motorTorque = (accelerationMultiplier * 50f) * throttleAxis * Mathf.Clamp01(inputThrottle);
         }else {
           // If the maxSpeed has been reached, then stop applying torque to the wheels.
           // IMPORTANT: The maxSpeed variable should be considered as an approximation; the speed of the car
@@ -568,13 +491,13 @@ public class PrometeoCarController : MonoBehaviour
         if(Mathf.Abs(Mathf.RoundToInt(carSpeed)) < maxReverseSpeed){
           //Apply negative torque in all wheels to go in reverse if maxReverseSpeed has not been reached.
           frontLeftCollider.brakeTorque = 0;
-          frontLeftCollider.motorTorque = (accelerationMultiplier * 50f) * throttleAxis;
+          frontLeftCollider.motorTorque = (accelerationMultiplier * 50f) * throttleAxis * Mathf.Clamp01(Mathf.Abs(inputThrottle));
           frontRightCollider.brakeTorque = 0;
-          frontRightCollider.motorTorque = (accelerationMultiplier * 50f) * throttleAxis;
+          frontRightCollider.motorTorque = (accelerationMultiplier * 50f) * throttleAxis * Mathf.Clamp01(Mathf.Abs(inputThrottle));
           rearLeftCollider.brakeTorque = 0;
-          rearLeftCollider.motorTorque = (accelerationMultiplier * 50f) * throttleAxis;
+          rearLeftCollider.motorTorque = (accelerationMultiplier * 50f) * throttleAxis * Mathf.Clamp01(Mathf.Abs(inputThrottle));
           rearRightCollider.brakeTorque = 0;
-          rearRightCollider.motorTorque = (accelerationMultiplier * 50f) * throttleAxis;
+          rearRightCollider.motorTorque = (accelerationMultiplier * 50f) * throttleAxis * Mathf.Clamp01(Mathf.Abs(inputThrottle));
         }else {
           //If the maxReverseSpeed has been reached, then stop applying torque to the wheels.
           // IMPORTANT: The maxReverseSpeed variable should be considered as an approximation; the speed of the car
