@@ -35,6 +35,10 @@ public class RandomTrackGenerator : MonoBehaviour
     public float checkpointYOffset = 1f;
     public float checkpointYRotation = 90f;
     public GameObject carPrefab;
+    public GameObject playerCar;
+    public bool spawnPlayerCar = true;
+    public int carCount = 1;
+    public float carSpacing = 8f;
     public float carYOffset = 0.5f;
     public float carRotationY = 0f;
 
@@ -42,10 +46,10 @@ public class RandomTrackGenerator : MonoBehaviour
     private SplineRoadGenerator roadGenerator;
 
     // Wall References
-    public GameObject leftWallObj;
-    public GameObject rightWallObj;
-    public GameObject checkpointsContainer;
-    public GameObject carObj;
+    [HideInInspector] public GameObject leftWallObj;
+    [HideInInspector] public GameObject rightWallObj;
+    [HideInInspector] public GameObject checkpointsContainer;
+    [HideInInspector] public GameObject carObj;
 
     [ContextMenu("Generate Full Track")]
     public void Generate()
@@ -274,33 +278,104 @@ public class RandomTrackGenerator : MonoBehaviour
     void PlaceCar()
     {
         Spline spline = splineContainer.Spline;
-        float3 posFunc, tangentFunc, upFunc;
-        SplineUtility.Evaluate(spline, 0f, out posFunc, out tangentFunc, out upFunc);
+        float splineLength = spline.GetLength();
 
-        Vector3 carPos = (Vector3)posFunc + (Vector3)upFunc * carYOffset;
-        Quaternion carRot = Quaternion.LookRotation(tangentFunc, upFunc) * Quaternion.Euler(0, carRotationY, 0);
-
-        if (carObj != null)
+        // 1. Find or create the container
+        Transform container = transform.Find("CarsContainer");
+        if (container == null)
         {
-            carObj.transform.position = carPos;
-            carObj.transform.rotation = carRot;
-            // Ensure Unity knows it's the same object, but position changed
+            GameObject containerObj = new GameObject("CarsContainer");
+            containerObj.transform.parent = transform;
+            containerObj.transform.localPosition = Vector3.zero;
+            container = containerObj.transform;
         }
-        else
+
+        // Clean up existing cars safely
+        for (int i = container.childCount - 1; i >= 0; i--)
         {
-            if (carPrefab != null)
+            GameObject child = container.GetChild(i).gameObject;
+            if (playerCar != null && child == playerCar)
             {
-                carObj = Instantiate(carPrefab, carPos, carRot);
-                carObj.name = "Cars";
+                child.transform.parent = transform; // Save from destruction
+                continue;
+            }
+            DestroyImmediate(child);
+        }
+
+        // Safely clean up old single car if it exists in the scene and is a child of the track
+        if (carObj != null && carObj.name != "CarsContainer")
+        {
+            if (carObj.scene.IsValid() && carObj.transform.IsChildOf(transform))
+            {
+                DestroyImmediate(carObj);
+            }
+        }
+
+        carObj = container.gameObject;
+
+        if (carPrefab == null)
+        {
+            Debug.LogWarning("RandomTrackGenerator: 'Car Prefab' is not assigned in the Inspector! Spawning blank placeholder cubes. Please drag your Car prefab into the 'Car Prefab' slot under Game Elements.");
+        }
+
+        if (playerCar != null)
+        {
+            playerCar.SetActive(spawnPlayerCar);
+        }
+
+        // 3. Spawn cars
+        for (int i = 0; i < carCount; i++)
+        {
+            // Staggered grid spacing
+            float dist = i * (carSpacing * 0.5f);
+            float t = 0f;
+            if (splineLength > 0f)
+            {
+                // Place backwards from the start line
+                t = (splineLength - dist) / splineLength % 1f;
+                if (t < 0) t += 1f;
+            }
+
+            float3 posFunc, tangentFunc, upFunc;
+            SplineUtility.Evaluate(spline, t, out posFunc, out tangentFunc, out upFunc);
+
+            // Offset cars to create a staggered 2-lane layout if more than 1 car
+            float laneOffset = 0f;
+            if (carCount > 1) 
+            {
+                laneOffset = (i % 2 == 0) ? -trackWidth * 0.2f : trackWidth * 0.2f;
+            }
+
+            float3 rightFunc = math.normalize(math.cross(upFunc, tangentFunc));
+
+            Vector3 carPos = (Vector3)posFunc + (Vector3)rightFunc * laneOffset + (Vector3)upFunc * carYOffset;
+            Quaternion carRot = Quaternion.LookRotation(tangentFunc, upFunc) * Quaternion.Euler(0, carRotationY, 0);
+
+            GameObject newCar;
+            bool isPlayer = (i == 0 && playerCar != null && spawnPlayerCar);
+
+            if (isPlayer)
+            {
+                newCar = playerCar;
+                newCar.transform.position = carPos;
+                newCar.transform.rotation = carRot;
             }
             else
             {
-                // Placeholder cube
-                carObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                carObj.name = "Car_Placeholder";
-                carObj.transform.position = carPos;
-                carObj.transform.rotation = carRot;
+                if (carPrefab != null)
+                {
+                    newCar = Instantiate(carPrefab, carPos, carRot);
+                }
+                else
+                {
+                    newCar = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    newCar.transform.position = carPos;
+                    newCar.transform.rotation = carRot;
+                }
+                newCar.name = $"Car_{i}";
             }
+            
+            newCar.transform.parent = carObj.transform;
         }
     }
 }

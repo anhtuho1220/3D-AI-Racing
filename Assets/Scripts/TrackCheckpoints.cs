@@ -1,10 +1,21 @@
+using System;
 using UnityEngine;
 using System.Collections.Generic;
 
 public class TrackCheckpoints : MonoBehaviour
 {
+    public class CarCheckpointEventArgs : EventArgs
+    {
+        public Transform carTransform;
+    }
+
+    public event EventHandler<CarCheckpointEventArgs> OnCarCorrectCheckpoint;
+    public event EventHandler<CarCheckpointEventArgs> OnCarWrongCheckpoint;
+
+    [SerializeField] private List<Transform> carList;
     private List<CheckpointSingle> checkpointList;
-    private int nextCheckpointIndex;
+    private List<int> nextCheckpointIndexList;
+
     private void Awake()
     {
         Transform checkpointsContainer = transform.Find("Checkpoints");
@@ -28,18 +39,54 @@ public class TrackCheckpoints : MonoBehaviour
             checkpointScript.SetTrackCheckpoints(this);
             checkpointList.Add(checkpointScript);
         }
-        nextCheckpointIndex = 0;
+        nextCheckpointIndexList = new List<int>();
+        foreach (Transform car in carList)
+        {
+            nextCheckpointIndexList.Add(0);
+        }
     }
 
-    public void CheckpointTriggered(CheckpointSingle checkpoint)
+    public void CheckpointTriggered(CheckpointSingle checkpoint, Transform carTransform)
     {
-        int index = checkpointList.IndexOf(checkpoint);
-        if (index == nextCheckpointIndex)
+        int carIndex = carList.IndexOf(carTransform);
+        if (carIndex == -1) 
         {
-            nextCheckpointIndex = (nextCheckpointIndex + 1) % checkpointList.Count;
-            Debug.Log($"Checkpoint!" + index);
-        } else {
-            Debug.Log($"Wrong Checkpoint!");
+            // Dynamically register randomly spawned cars
+            carList.Add(carTransform);
+            nextCheckpointIndexList.Add(0);
+            carIndex = carList.Count - 1;
         }
+
+        int index = nextCheckpointIndexList[carIndex];
+        int checkpointIndex = checkpointList.IndexOf(checkpoint);
+
+        if (index == checkpointIndex)
+        {
+            Debug.Log($"Correct Checkpoint! Checkpoint: {index} passed by {carTransform.name}");
+            OnCarCorrectCheckpoint?.Invoke(this, new CarCheckpointEventArgs { carTransform = carTransform });
+            nextCheckpointIndexList[carIndex] = (nextCheckpointIndexList[carIndex] + 1) % checkpointList.Count;
+        } else {
+            Debug.Log($"Wrong Checkpoint! Expected {index}, passed by {carTransform.name}");
+            OnCarWrongCheckpoint?.Invoke(this, new CarCheckpointEventArgs { carTransform = carTransform });
+        }
+    }
+
+    public void ResetCar(Transform carTransform)
+    {
+        int carIndex = carList.IndexOf(carTransform);
+        if (carIndex != -1)
+        {
+            nextCheckpointIndexList[carIndex] = 0;
+        }
+    }
+
+    public CheckpointSingle GetNextCheckpoint(Transform carTransform)
+    {
+        int carIndex = carList.IndexOf(carTransform);
+        if (carIndex != -1 && checkpointList.Count > 0)
+        {
+            return checkpointList[nextCheckpointIndexList[carIndex]];
+        }
+        return null;
     }
 }

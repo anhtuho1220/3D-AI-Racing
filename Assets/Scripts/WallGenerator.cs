@@ -278,11 +278,17 @@ public class WallGenerator : MonoBehaviour
             MeshCollider mc = GetComponent<MeshCollider>();
             if (mc == null) mc = gameObject.AddComponent<MeshCollider>();
             mc.sharedMesh = m_Mesh;
+            
+            Wall wall = GetComponent<Wall>();
+            if (wall == null) wall = gameObject.AddComponent<Wall>();
         }
         else
         {
              MeshCollider mc = GetComponent<MeshCollider>();
              if (mc != null) DestroyImmediate(mc);
+             
+             Wall wall = GetComponent<Wall>();
+             if (wall != null) DestroyImmediate(wall);
         }
     }
 }

@@ -295,6 +295,52 @@ public class PrometeoAIController : MonoBehaviour
         inputHandbrake = handbrake;
     }
 
+    public void ResetCar()
+    {
+        if (carRigidbody != null)
+        {
+            carRigidbody.linearVelocity = Vector3.zero;
+            carRigidbody.angularVelocity = Vector3.zero;
+        }
+
+        inputSteering = 0f;
+        inputThrottle = 0f;
+        inputHandbrake = false;
+
+        steeringAxis = 0f;
+        throttleAxis = 0f;
+        driftingAxis = 0f;
+        isDrifting = false;
+        isTractionLocked = false;
+
+        if (frontLeftCollider != null)
+        {
+            frontLeftCollider.motorTorque = 0f;
+            frontLeftCollider.brakeTorque = 0f;
+            frontLeftCollider.steerAngle = 0f;
+        }
+        if (frontRightCollider != null)
+        {
+            frontRightCollider.motorTorque = 0f;
+            frontRightCollider.brakeTorque = 0f;
+            frontRightCollider.steerAngle = 0f;
+        }
+        if (rearLeftCollider != null)
+        {
+            rearLeftCollider.motorTorque = 0f;
+            rearLeftCollider.brakeTorque = 0f;
+        }
+        if (rearRightCollider != null)
+        {
+            rearRightCollider.motorTorque = 0f;
+            rearRightCollider.brakeTorque = 0f;
+        }
+
+        CancelInvoke("DecelerateCar");
+        CancelInvoke("RecoverTraction");
+        RecoverTraction();
+    }
+
     // This method converts the car speed data from float to string, and then set the text of the UI carSpeedText with this value.
     public void CarSpeedUI(){
 
