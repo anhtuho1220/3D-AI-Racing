@@ -7,6 +7,7 @@ using UnityEngine.Splines;
 
 [ExecuteInEditMode]
 [RequireComponent(typeof(SplineContainer), typeof(MeshRenderer), typeof(MeshFilter))]
+[RequireComponent(typeof(MeshCollider))]
 public class SplineRoadGenerator : MonoBehaviour
 {
     [SerializeField]
@@ -25,6 +26,21 @@ public class SplineRoadGenerator : MonoBehaviour
     private Material m_RoadMaterial;
 
     [SerializeField]
+    private bool m_GenerateWalls = true;
+
+    [SerializeField]
+    private Material m_WallMaterial;
+
+    [SerializeField]
+    private float m_WallHeight = 1f;
+
+    [SerializeField]
+    private float m_WallThickness = 0.5f;
+
+    [SerializeField]
+    private float m_WallOffset = 0f;
+
+    [SerializeField]
     private bool m_Optimize = true;
 
     [SerializeField]
@@ -39,6 +55,7 @@ public class SplineRoadGenerator : MonoBehaviour
     private List<Vector3> m_Normals = new List<Vector3>();
     private List<Vector2> m_UVs = new List<Vector2>();
     private List<int> m_Indices = new List<int>();
+    private List<int> m_WallIndices = new List<int>();
     private bool m_RebuildRequested = false;
 
     public float Width
@@ -92,6 +109,12 @@ public class SplineRoadGenerator : MonoBehaviour
             }
         }
     }
+
+    public bool GenerateWalls { get => m_GenerateWalls; set { if (m_GenerateWalls != value) { m_GenerateWalls = value; m_RebuildRequested = true; } } }
+    public Material WallMaterial { get => m_WallMaterial; set { if (m_WallMaterial != value) { m_WallMaterial = value; m_RebuildRequested = true; } } }
+    public float WallHeight { get => m_WallHeight; set { if (m_WallHeight != value) { m_WallHeight = value; m_RebuildRequested = true; } } }
+    public float WallThickness { get => m_WallThickness; set { if (m_WallThickness != value) { m_WallThickness = value; m_RebuildRequested = true; } } }
+    public float WallOffset { get => m_WallOffset; set { if (m_WallOffset != value) { m_WallOffset = value; m_RebuildRequested = true; } } }
 
     public bool Optimize
     {
@@ -225,9 +248,19 @@ public class SplineRoadGenerator : MonoBehaviour
 
         // Apply material if not set
         var meshRenderer = GetComponent<MeshRenderer>();
-        if (meshRenderer.sharedMaterial != m_RoadMaterial && m_RoadMaterial != null)
+        if (m_GenerateWalls && m_WallMaterial != null)
         {
-            meshRenderer.sharedMaterial = m_RoadMaterial;
+            if (meshRenderer.sharedMaterials.Length != 2 || meshRenderer.sharedMaterials[0] != m_RoadMaterial || meshRenderer.sharedMaterials[1] != m_WallMaterial)
+            {
+                meshRenderer.sharedMaterials = new Material[] { m_RoadMaterial, m_WallMaterial };
+            }
+        }
+        else
+        {
+            if (meshRenderer.sharedMaterials.Length != 1 || meshRenderer.sharedMaterials[0] != m_RoadMaterial)
+            {
+                meshRenderer.sharedMaterials = new Material[] { m_RoadMaterial };
+            }
         }
 
         m_Mesh.Clear();
@@ -235,6 +268,7 @@ public class SplineRoadGenerator : MonoBehaviour
         m_Normals.Clear();
         m_UVs.Clear();
         m_Indices.Clear();
+        m_WallIndices.Clear();
 
         Spline spline = m_SplineContainer.Spline;
         float length = spline.GetLength();
@@ -354,12 +388,99 @@ public class SplineRoadGenerator : MonoBehaviour
             m_Indices.Add(baseIndex + 3);
         }
 
+        if (m_GenerateWalls)
+        {
+            for (int i = 0; i < samples.Count; i++)
+            {
+                RoadSample s = samples[i];
+                Vector3 pos = s.position;
+                Vector3 up = s.up;
+                Vector3 right = s.right;
+
+                // Left wall
+                Vector3 leftInnerBottom = pos - (right * (halfWidth + m_WallOffset));
+                Vector3 leftInnerTop = leftInnerBottom + up * m_WallHeight;
+                Vector3 leftOuterTop = leftInnerTop - right * m_WallThickness;
+                Vector3 leftOuterBottom = leftInnerBottom - right * m_WallThickness;
+
+                // Right wall
+                Vector3 rightInnerBottom = pos + (right * (halfWidth + m_WallOffset));
+                Vector3 rightInnerTop = rightInnerBottom + up * m_WallHeight;
+                Vector3 rightOuterTop = rightInnerTop + right * m_WallThickness;
+                Vector3 rightOuterBottom = rightInnerBottom + right * m_WallThickness;
+
+                int baseIdx = m_Positions.Count;
+                m_Positions.Add(leftInnerBottom);
+                m_Positions.Add(leftInnerTop);
+                m_Positions.Add(leftOuterTop);
+                m_Positions.Add(leftOuterBottom);
+
+                m_Positions.Add(rightOuterBottom);
+                m_Positions.Add(rightOuterTop);
+                m_Positions.Add(rightInnerTop);
+                m_Positions.Add(rightInnerBottom);
+
+                for (int n = 0; n < 8; n++) m_Normals.Add(up);
+
+                float u = s.vCoord;
+                m_UVs.Add(new Vector2(u, 0)); m_UVs.Add(new Vector2(u, 1)); m_UVs.Add(new Vector2(u, 1)); m_UVs.Add(new Vector2(u, 0));
+                m_UVs.Add(new Vector2(u, 0)); m_UVs.Add(new Vector2(u, 1)); m_UVs.Add(new Vector2(u, 1)); m_UVs.Add(new Vector2(u, 0));
+
+                if (i < samples.Count - 1)
+                {
+                    int currentBaseLeft = baseIdx;
+                    int nextBaseLeft = baseIdx + 8;
+                    
+                    int currentBaseRight = baseIdx + 4;
+                    int nextBaseRight = baseIdx + 12;
+
+                    for (int j = 0; j < 4; j++)
+                    {
+                        int current = j;
+                        int next = (j + 1) % 4;
+                        
+                        m_WallIndices.Add(currentBaseLeft + current);
+                        m_WallIndices.Add(currentBaseLeft + next);
+                        m_WallIndices.Add(nextBaseLeft + next);
+                        
+                        m_WallIndices.Add(currentBaseLeft + current);
+                        m_WallIndices.Add(nextBaseLeft + next);
+                        m_WallIndices.Add(nextBaseLeft + current);
+                    }
+
+                    for (int j = 0; j < 4; j++)
+                    {
+                        int current = j;
+                        int next = (j + 1) % 4;
+                        
+                        m_WallIndices.Add(currentBaseRight + current);
+                        m_WallIndices.Add(currentBaseRight + next);
+                        m_WallIndices.Add(nextBaseRight + next);
+                        
+                        m_WallIndices.Add(currentBaseRight + current);
+                        m_WallIndices.Add(nextBaseRight + next);
+                        m_WallIndices.Add(nextBaseRight + current);
+                    }
+                }
+            }
+        }
+
         m_Mesh.SetVertices(m_Positions);
         m_Mesh.SetNormals(m_Normals);
         m_Mesh.SetUVs(0, m_UVs);
-        m_Mesh.SetIndices(m_Indices, MeshTopology.Triangles, 0);
 
+        m_Mesh.subMeshCount = m_GenerateWalls ? 2 : 1;
+        m_Mesh.SetIndices(m_Indices, MeshTopology.Triangles, 0);
+        if (m_GenerateWalls) m_Mesh.SetIndices(m_WallIndices, MeshTopology.Triangles, 1);
+
+        m_Mesh.RecalculateNormals();
         m_Mesh.RecalculateBounds();
+
+        MeshCollider meshCollider = GetComponent<MeshCollider>();
+        if (meshCollider != null)
+        {
+            meshCollider.sharedMesh = m_Mesh;
+        }
     }
 
     private struct RoadSample

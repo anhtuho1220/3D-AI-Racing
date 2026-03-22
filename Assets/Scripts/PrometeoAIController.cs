@@ -258,18 +258,19 @@ public class PrometeoAIController : MonoBehaviour
       }
 
       // Steering Handling
-      if (inputSteering < 0)
-      {
-          TurnLeft();
-      }
-      else if (inputSteering > 0)
-      {
-          TurnRight();
-      }
-      else if (steeringAxis != 0f)
-      {
-          ResetSteeringAngle();
-      }
+      // ML-Agents implicitly uses a tanh activation layer to output continuous actions in [-1, 1].
+      // We directly use the analog magnitude of inputSteering to enable smooth, proportional turning.
+      
+      // Optional: For extra-smooth small turns, you can apply a curve like squaring or applying tanh here:
+      // float shapedSteering = Mathf.Sign(inputSteering) * Mathf.Pow(inputSteering, 2); 
+      float targetSteering = inputSteering;
+
+      steeringAxis = Mathf.Lerp(steeringAxis, targetSteering, Time.deltaTime * 10f * steeringSpeed);
+      
+      var steeringAngle = steeringAxis * maxSteeringAngle;
+      frontLeftCollider.steerAngle = Mathf.Lerp(frontLeftCollider.steerAngle, steeringAngle, steeringSpeed);
+      frontRightCollider.steerAngle = Mathf.Lerp(frontRightCollider.steerAngle, steeringAngle, steeringSpeed);
+
 
       // Handbrake Handling
       if (inputHandbrake)

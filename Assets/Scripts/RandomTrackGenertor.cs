@@ -20,13 +20,11 @@ public class RandomTrackGenerator : MonoBehaviour
     public float textureScale = 64f;
 
     [Header("Wall Settings")]
+    public bool generateWalls = true;
     public float wallThickness = 0.5f;
-    public float wallHeight = 2f; // Extrude radius
-    public float wallOffset = -2f; // Offset from track edge
-    public int wallResolution = 10; // Segments per knot
-    public Material leftWallMat;
-    public Material rightWallMat;
-    public bool enableWallColliders = true;
+    public float wallHeight = 2f;
+    public float wallOffset = -2f;
+    public Material wallMaterial;
 
     [Header("Game Elements")]
     public GameObject checkpointPrefab;
@@ -44,10 +42,8 @@ public class RandomTrackGenerator : MonoBehaviour
 
     private SplineContainer splineContainer;
     private SplineRoadGenerator roadGenerator;
+    private SplineCheckpointGenerator checkpointGenerator;
 
-    // Wall References
-    [HideInInspector] public GameObject leftWallObj;
-    [HideInInspector] public GameObject rightWallObj;
     [HideInInspector] public GameObject checkpointsContainer;
     [HideInInspector] public GameObject carObj;
 
@@ -124,7 +120,7 @@ public class RandomTrackGenerator : MonoBehaviour
 
         foreach (var p in points)
         {
-            spline.Add(new BezierKnot(p, 0, 0, quaternion.identity), TangentMode.Mirrored);
+            spline.Add(new BezierKnot(p, 0, 0, quaternion.identity), TangentMode.Continuous);
         }
 
         spline.Closed = true;
@@ -134,26 +130,28 @@ public class RandomTrackGenerator : MonoBehaviour
         for (int i = 0; i < count; i++)
         {
             var knot = spline[i];
+            float3 currentPos = knot.Position;
             float3 prevPos = spline[(i - 1 + count) % count].Position;
             float3 nextPos = spline[(i + 1) % count].Position;
 
             // Catmull-Rom style tangent direction
             float3 tangentDir = math.normalize(nextPos - prevPos);
             
-            // Handle length logic (0.3f * dist)
-            float dist = math.distance(prevPos, nextPos);
-            float handleLen = dist * 0.3f;
+            // Scale handles based on distance to neighbor points independently
+            // This prevents overshooting handles when points are unevenly spaced
+            float distToPrev = math.distance(currentPos, prevPos);
+            float distToNext = math.distance(currentPos, nextPos);
 
-            knot.TangentOut = tangentDir * handleLen;
-            knot.TangentIn = -tangentDir * handleLen;
+            // A standard multiplier is usually between 0.3f and 0.33f
+            knot.TangentIn = -tangentDir * (distToPrev * 0.33f);
+            knot.TangentOut = tangentDir * (distToNext * 0.33f);
 
             spline[i] = knot;
         }
 
         SetupRoadLoft();
-        GenerateWalls();
         PlaceCar();
-        GenerateCheckpoints();
+        SetupCheckpoints();
     }
 
     void SetupRoadLoft()
@@ -171,108 +169,30 @@ public class RandomTrackGenerator : MonoBehaviour
         roadGenerator.Resolution = roadResolution;
         roadGenerator.TextureScale = textureScale;
         
+        roadGenerator.GenerateWalls = generateWalls;
+        roadGenerator.WallThickness = wallThickness;
+        roadGenerator.WallHeight = wallHeight;
+        roadGenerator.WallOffset = wallOffset;
+        roadGenerator.WallMaterial = wallMaterial;
+        
         roadGenerator.Rebuild();
     }
 
-    void GenerateWalls()
+
+    void SetupCheckpoints()
     {
-        // Update Left Wall
-        if (leftWallObj == null)
-        {
-            leftWallObj = new GameObject("LeftWall");
-            leftWallObj.transform.parent = transform;
-            leftWallObj.transform.localPosition = Vector3.zero;
-            leftWallObj.transform.localRotation = Quaternion.identity;
-        }
+        if (!TryGetComponent(out checkpointGenerator))
+            checkpointGenerator = gameObject.AddComponent<SplineCheckpointGenerator>();
 
-        WallGenerator leftWg = leftWallObj.GetComponent<WallGenerator>();
-        if (leftWg == null) leftWg = leftWallObj.AddComponent<WallGenerator>();
-
-        leftWg.Container = splineContainer;
-        leftWg.WallMaterial = leftWallMat != null ? leftWallMat : new Material(Shader.Find("Standard")) { color = new Color(1f, 0.92f, 0.016f, 0.3f) };
-        leftWg.TrackWidth = trackWidth;
-        leftWg.WallOffset = wallOffset;
-        leftWg.WallThickness = wallThickness;
-        leftWg.WallHeight = wallHeight;
-        leftWg.WallResolution = wallResolution;
-        leftWg.EnableColliders = enableWallColliders;
-        leftWg.IsLeft = true;
-        leftWg.Rebuild();
-
-        // Update Right Wall
-        if (rightWallObj == null)
-        {
-            rightWallObj = new GameObject("RightWall");
-            rightWallObj.transform.parent = transform;
-            rightWallObj.transform.localPosition = Vector3.zero;
-            rightWallObj.transform.localRotation = Quaternion.identity;
-        }
-
-        WallGenerator rightWg = rightWallObj.GetComponent<WallGenerator>();
-        if (rightWg == null) rightWg = rightWallObj.AddComponent<WallGenerator>();
-
-        rightWg.Container = splineContainer;
-        rightWg.WallMaterial = rightWallMat != null ? rightWallMat : new Material(Shader.Find("Standard")) { color = new Color(1f, 0.64f, 0f, 0.3f) };
-        rightWg.TrackWidth = trackWidth;
-        rightWg.WallOffset = wallOffset;
-        rightWg.WallThickness = wallThickness;
-        rightWg.WallHeight = wallHeight;
-        rightWg.WallResolution = wallResolution;
-        rightWg.EnableColliders = enableWallColliders;
-        rightWg.IsLeft = false;
-        rightWg.Rebuild();
-    }
-
-    void GenerateCheckpoints()
-    {
-        if (checkpointsContainer == null) 
-        {
-            checkpointsContainer = new GameObject("Checkpoints");
-            checkpointsContainer.transform.parent = transform;
-            checkpointsContainer.transform.localPosition = Vector3.zero;
-            checkpointsContainer.transform.localRotation = Quaternion.identity;
-        }
-        else
-        {
-             // Clear existing checkpoints
-             // Use a backward loop or while loop for immediate destruction
-             while (checkpointsContainer.transform.childCount > 0)
-             {
-                 DestroyImmediate(checkpointsContainer.transform.GetChild(0).gameObject);
-             }
-        }
-
-        if (checkpointPrefab == null) return;
-
-        Spline spline = splineContainer.Spline;
-        float splineLength = spline.GetLength();
+        checkpointGenerator.Container = splineContainer;
+        checkpointGenerator.CheckpointPrefab = checkpointPrefab;
+        checkpointGenerator.CheckpointCount = checkpointCount;
+        checkpointGenerator.CheckpointForwardOffset = checkpointForwardOffset;
+        checkpointGenerator.CheckpointYOffset = checkpointYOffset;
+        checkpointGenerator.CheckpointYRotation = checkpointYRotation;
+        checkpointGenerator.CarObj = carObj;
         
-        for (int i = 0; i < checkpointCount; i++)
-        {
-            float t = (float)i / checkpointCount;
-            // Add offset based on spline length
-            if (splineLength > 0)
-            {
-                t = (t + (checkpointForwardOffset / splineLength)) % 1f;
-                if (t < 0) t += 1f; // Handle negative offset if needed
-            }
-            
-            float3 posFunc, tangentFunc, upFunc;
-            SplineUtility.Evaluate(spline, t, out posFunc, out tangentFunc, out upFunc);
-
-            Vector3 position = (Vector3)posFunc + Vector3.up * checkpointYOffset;
-            Quaternion rotation = Quaternion.LookRotation(tangentFunc, upFunc) * Quaternion.Euler(0, checkpointYRotation, 0);
-
-            GameObject cp = Instantiate(checkpointPrefab, position, rotation);
-            cp.transform.parent = checkpointsContainer.transform;
-            cp.name = $"Checkpoint_{i}";
-
-            CheckpointSingle checkScript = cp.GetComponentInChildren<CheckpointSingle>();
-            if (checkScript != null)
-            {
-                checkScript.carObj = carObj;
-            }
-        }
+        checkpointGenerator.Rebuild();
     }
 
     void PlaceCar()

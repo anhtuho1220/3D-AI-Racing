@@ -13,6 +13,14 @@ public class CarDriverAgent : Agent
     private PrometeoAIController carController;
     private Rigidbody carRigidbody;
     private RayPerceptionSensorComponent3D raySensorComponent;
+    
+    private int wrongCheckpointCount = 0;
+    private float closeDistance = 5f; 
+
+    // Cached ray indices to avoid finding them every frame
+    private int leftRayIndex = -1;
+    private int rightRayIndex = -1;
+    private bool rayIndicesCached = false;
 
     public override void Initialize()
     {
@@ -20,6 +28,7 @@ public class CarDriverAgent : Agent
         carRigidbody = GetComponent<Rigidbody>();
         raySensorComponent = GetComponent<RayPerceptionSensorComponent3D>();
         trackCheckpoints = FindFirstObjectByType<TrackCheckpoints>();
+        
         startPosition = transform.position;
         startRotation = transform.rotation;
     }
@@ -35,15 +44,35 @@ public class CarDriverAgent : Agent
 
     private void OnCorrectCheckpoint(object sender, TrackCheckpoints.CarCheckpointEventArgs e)
     {
-        if (e.carTransform == transform) {
-            AddReward(1f);
+        if (e.carTransform == transform) 
+        {
+            float directionalBonus = 0f;
+            var crossedCheckpoint = trackCheckpoints.GetNextCheckpoint(transform);
+            
+            if (crossedCheckpoint != null)
+            {
+                float alignment = Vector3.Dot(transform.forward, crossedCheckpoint.transform.forward);
+                if (alignment > 0f)
+                {
+                    directionalBonus = alignment; // up to +1f bonus if perfectly aligned
+                }
+            }
+            AddReward(1f + directionalBonus);
+            wrongCheckpointCount = 0;
         }
     }
 
     private void OnWrongCheckpoint(object sender, TrackCheckpoints.CarCheckpointEventArgs e)
     {
-        if (e.carTransform == transform) {
+        if (e.carTransform == transform) 
+        {
             AddReward(-1f);
+            wrongCheckpointCount++;
+            if (wrongCheckpointCount >= 3)
+            {
+                AddReward(-5.0f);
+                EndEpisode();
+            }
         }
     }
 
@@ -52,90 +81,180 @@ public class CarDriverAgent : Agent
         transform.position = startPosition;
         transform.rotation = startRotation;
         
+        wrongCheckpointCount = 0;
+
         if (trackCheckpoints != null) trackCheckpoints.ResetCar(transform);
         carController.ResetCar();
     }
 
     public override void CollectObservations(VectorSensor sensor)
     {
-        var nextCheckpoint = trackCheckpoints.GetNextCheckpoint(transform);
-        if (nextCheckpoint != null)
+        Vector3 checkpointForward = Vector3.zero;
+        float distanceToCheckpoint = 0f;
+
+        if (trackCheckpoints != null)
         {
-            Vector3 checkpointForward = nextCheckpoint.transform.forward;
-            float directionDot = Vector3.Dot(transform.forward, checkpointForward);
-            sensor.AddObservation(directionDot);
+            var nextCheckpoint = trackCheckpoints.GetNextCheckpoint(transform);
+            if (nextCheckpoint != null)
+            {
+                checkpointForward = nextCheckpoint.transform.forward;
+                distanceToCheckpoint = Vector3.Distance(transform.position, nextCheckpoint.transform.position);
+            }
         }
-        else
+
+        Vector3 localVelocity = Vector3.zero;
+        if (carRigidbody != null)
         {
-            sensor.AddObservation(0f);
+            localVelocity = transform.InverseTransformDirection(carRigidbody.linearVelocity);
         }
+
+        float directionDot = Vector3.Dot(transform.forward, checkpointForward);
+        
+        sensor.AddObservation(directionDot);
+        sensor.AddObservation(localVelocity);
+        
+        // Divide by arbitrarily expected max distance (100) to keep Neural Network gradients stable
+        sensor.AddObservation(distanceToCheckpoint / 100f);
     }
 
     public override void OnActionReceived(ActionBuffers actions)
     {
-        if (actions.ContinuousActions.Length >= 2 && actions.DiscreteActions.Length >= 1)
+        if (actions.ContinuousActions.Length < 2 || actions.DiscreteActions.Length < 1)
         {
-            float throttle = actions.ContinuousActions[0];
-            float steering = actions.ContinuousActions[1];
-            bool brake = actions.DiscreteActions[0] == 1;
-            
-            carController.SetInputs(steering, throttle, brake);
+            Debug.LogError("ML-Agents Behavior Parameters are not configured properly. Continuous Actions must be 2, and Discrete Branches must be 1.");
+            return;
+        }
 
-            if (carRigidbody != null)
+        float throttle = actions.ContinuousActions[0];
+        float steering = actions.ContinuousActions[1];
+        bool brake = actions.DiscreteActions[0] == 1;
+        
+        carController.SetInputs(steering, throttle, brake);
+
+        if (carRigidbody != null)
+        {
+            ProcessMovementRewards();
+            ProcessCheckpointAlignmentRewards();
+        }
+
+        if (raySensorComponent != null && raySensorComponent.RaySensor != null)
+        {
+            ProcessRaycastRewards();
+        }
+    }
+
+    private void ProcessMovementRewards()
+    {
+        // Re-calculate the specific forward speed per frame!
+        float currentForwardSpeed = Vector3.Dot(carRigidbody.linearVelocity, transform.forward);
+        
+        if (currentForwardSpeed > 1f)
+        {
+            AddReward(currentForwardSpeed * 0.005f);
+        }
+        else if (currentForwardSpeed < -1f)
+        {
+            AddReward(-0.01f);
+        }
+        else
+        {
+            AddReward(-0.05f); // Penalize for standing still
+        }
+    }
+
+    private void ProcessCheckpointAlignmentRewards()
+    {
+        if (trackCheckpoints == null) return;
+        
+        var nextCheckpoint = trackCheckpoints.GetNextCheckpoint(transform);
+        if (nextCheckpoint != null)
+        {
+            float directionDot = Vector3.Dot(transform.forward, nextCheckpoint.transform.forward);
+            if (directionDot < 0f)
             {
-                float forwardSpeed = Vector3.Dot(carRigidbody.linearVelocity, transform.forward);
-                if (forwardSpeed > 0.1f)
-                {
-                    AddReward(0.05f);
-                }
+                AddReward(-0.02f);
             }
 
-            if (raySensorComponent != null && raySensorComponent.RaySensor != null)
+            Vector3 directionToCheckpoint = (nextCheckpoint.transform.position - transform.position).normalized;
+            float velocityAlignment = Vector3.Dot(transform.forward, directionToCheckpoint);
+
+            if (velocityAlignment > 0f) 
             {
-                var rayOutput = raySensorComponent.RaySensor.RayPerceptionOutput;
-                var rayInput = raySensorComponent.GetRayPerceptionInput();
+                AddReward(velocityAlignment * 0.01f); 
+            }
+        }
+    }
 
-                if (rayOutput.RayOutputs != null && rayOutput.RayOutputs.Length > 0 && rayInput.Angles.Count > 0)
+    private void ProcessRaycastRewards()
+    {
+        var rayOutput = raySensorComponent.RaySensor.RayPerceptionOutput;
+        var rayInput = raySensorComponent.GetRayPerceptionInput();
+
+        if (rayOutput.RayOutputs == null || rayOutput.RayOutputs.Length == 0 || rayInput.Angles.Count == 0) return;
+
+        int totalRays = rayOutput.RayOutputs.Length;
+        
+        // Cache min/max angles to find the outermost rays (leftmost/rightmost) just once
+        if (!rayIndicesCached) 
+        {
+             float maxAngle = float.MinValue;
+             float minAngle = float.MaxValue;
+             for (int i = 0; i < rayInput.Angles.Count; i++)
+             {
+                 if (rayInput.Angles[i] > maxAngle)
+                 {
+                     maxAngle = rayInput.Angles[i];
+                     leftRayIndex = i;
+                 }
+                 if (rayInput.Angles[i] < minAngle)
+                 {
+                     minAngle = rayInput.Angles[i];
+                     rightRayIndex = i;
+                 }
+             }
+             rayIndicesCached = true;
+        }
+
+        int closeRayCount = 0;
+
+        for (int i = 0; i < totalRays; i++)
+        {
+            var ray = rayOutput.RayOutputs[i];
+            
+            if (ray.HitTaggedObject)
+            {
+                string hitTag = rayInput.DetectableTags[ray.HitTagIndex];
+                if (hitTag == "Left Walls" || hitTag == "Right Walls")
                 {
-                    int leftRayIndex = -1;
-                    int rightRayIndex = -1;
-                    float maxAngle = float.MinValue;
-                    float minAngle = float.MaxValue;
-
-                    for (int i = 0; i < rayInput.Angles.Count; i++)
+                    float hitDistance = ray.HitFraction * rayInput.RayLength;
+                    if (hitDistance < closeDistance)
                     {
-                        if (rayInput.Angles[i] > maxAngle)
-                        {
-                            maxAngle = rayInput.Angles[i];
-                            leftRayIndex = i;
-                        }
-                        if (rayInput.Angles[i] < minAngle)
-                        {
-                            minAngle = rayInput.Angles[i];
-                            rightRayIndex = i;
-                        }
-                    }
-
-                    if (leftRayIndex >= 0 && rightRayIndex >= 0)
-                    {
-                        var leftRay = rayOutput.RayOutputs[leftRayIndex];
-                        var rightRay = rayOutput.RayOutputs[rightRayIndex];
-
-                        if (leftRay.HitTaggedObject && rightRay.HitTaggedObject)
-                        {
-                            if (rayInput.DetectableTags[leftRay.HitTagIndex] == "Left walls" && rayInput.DetectableTags[rightRay.HitTagIndex] == "Right walls")
-                            {
-                                AddReward(0.01f);
-                            }
-                        }
-
+                        closeRayCount++;
                     }
                 }
             }
         }
-        else
+
+        // Penalize if >50% of rays are too close to walls
+        if ((float)closeRayCount / totalRays > 0.5f)
         {
-            Debug.LogError("ML-Agents Behavior Parameters are not configured properly. Continuous Actions must be 2, and Discrete Branches must be 1.");
+            AddReward(-0.02f);
+        }
+
+        // Reward for correct spatial positioning using outermost rays
+        if (leftRayIndex >= 0 && rightRayIndex >= 0)
+        {
+            var leftRay = rayOutput.RayOutputs[leftRayIndex];
+            var rightRay = rayOutput.RayOutputs[rightRayIndex];
+
+            if (leftRay.HitTaggedObject && rightRay.HitTaggedObject)
+            {
+                if (rayInput.DetectableTags[leftRay.HitTagIndex] == "Left Walls" && 
+                    rayInput.DetectableTags[rightRay.HitTagIndex] == "Right Walls")
+                {
+                    AddReward(0.01f);
+                }
+            }
         }
     }
 
@@ -147,42 +266,33 @@ public class CarDriverAgent : Agent
 
         if (Keyboard.current != null)
         {
-            if (Keyboard.current.wKey.isPressed) {
-                throttle = 1f;
-            }
-            else if (Keyboard.current.sKey.isPressed) {
-                throttle = -1f;
-            }
+            if (Keyboard.current.wKey.isPressed) throttle = 1f;
+            else if (Keyboard.current.sKey.isPressed) throttle = -1f;
 
-            if (Keyboard.current.aKey.isPressed) {
-                steering = -1f;
-            }
-            else if (Keyboard.current.dKey.isPressed) {
-                steering = 1f;
-            }
+            if (Keyboard.current.aKey.isPressed) steering = -1f;
+            else if (Keyboard.current.dKey.isPressed) steering = 1f;
 
-            if (Keyboard.current.spaceKey.isPressed) {
-                brake = 1;
-            }
+            if (Keyboard.current.spaceKey.isPressed) brake = 1;
         }
         
-        if (actionsOut.ContinuousActions.Length >= 2)
+        var continuousActionsOut = actionsOut.ContinuousActions;
+        var discreteActionsOut = actionsOut.DiscreteActions;
+
+        if (continuousActionsOut.Length >= 2)
         {
-            var continuousActionsOut = actionsOut.ContinuousActions;
             continuousActionsOut[0] = throttle;
             continuousActionsOut[1] = steering;
         }
 
-        if (actionsOut.DiscreteActions.Length >= 1)
+        if (discreteActionsOut.Length >= 1)
         {
-            var discreteActionsOut = actionsOut.DiscreteActions;
             discreteActionsOut[0] = brake;
         }
     }
 
     private void OnCollisionEnter(Collision collision)
     {
-        if (collision.gameObject.TryGetComponent<Wall>(out var wall))
+        if (collision.gameObject.TryGetComponent<Wall>(out _) || collision.gameObject.TryGetComponent<CarDriverAgent>(out _))
         {
             AddReward(-0.5f);
         }
@@ -190,10 +300,9 @@ public class CarDriverAgent : Agent
 
     private void OnCollisionStay(Collision collision)
     {
-        if (collision.gameObject.TryGetComponent<Wall>(out var wall))
+        if (collision.gameObject.TryGetComponent<Wall>(out _) || collision.gameObject.TryGetComponent<CarDriverAgent>(out _))
         {
             AddReward(-0.1f);
         }
     }
-
 }

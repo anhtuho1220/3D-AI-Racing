@@ -18,6 +18,16 @@ public class TrackCheckpoints : MonoBehaviour
 
     private void Awake()
     {
+        RefreshCheckpoints();
+        nextCheckpointIndexList = new List<int>();
+        foreach (Transform car in carList)
+        {
+            nextCheckpointIndexList.Add(0);
+        }
+    }
+
+    public void RefreshCheckpoints()
+    {
         Transform checkpointsContainer = transform.Find("Checkpoints");
         checkpointList = new List<CheckpointSingle>();
         if (checkpointsContainer == null)
@@ -66,7 +76,7 @@ public class TrackCheckpoints : MonoBehaviour
             OnCarCorrectCheckpoint?.Invoke(this, new CarCheckpointEventArgs { carTransform = carTransform });
             nextCheckpointIndexList[carIndex] = (nextCheckpointIndexList[carIndex] + 1) % checkpointList.Count;
         } else {
-            Debug.Log($"Wrong Checkpoint! Expected {index}, passed by {carTransform.name}");
+            Debug.Log($"Wrong Checkpoint! Expected {index}, got {checkpointIndex}, passed by {carTransform.name}");
             OnCarWrongCheckpoint?.Invoke(this, new CarCheckpointEventArgs { carTransform = carTransform });
         }
     }
