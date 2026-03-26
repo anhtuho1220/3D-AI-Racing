@@ -1,0 +1,65 @@
+{
+    "AI Driver": {
+        "checkpoints": [
+            {
+                "steps": 499964,
+                "file_path": "results\\CarRacing_v10\\AI Driver\\AI Driver-499964.onnx",
+                "reward": -2933.0319480895996,
+                "creation_time": 1774487841.6238976,
+                "auxillary_file_paths": [
+                    "results\\CarRacing_v10\\AI Driver\\AI Driver-499964.pt"
+                ]
+            },
+            {
+                "steps": 999937,
+                "file_path": "results\\CarRacing_v10\\AI Driver\\AI Driver-999937.onnx",
+                "reward": null,
+                "creation_time": 1774488865.98446,
+                "auxillary_file_paths": [
+                    "results\\CarRacing_v10\\AI Driver\\AI Driver-999937.pt"
+                ]
+            },
+            {
+                "steps": 1499950,
+                "file_path": "results\\CarRacing_v10\\AI Driver\\AI Driver-1499950.onnx",
+                "reward": 1594.0505394637585,
+                "creation_time": 1774489906.6639316,
+                "auxillary_file_paths": [
+                    "results\\CarRacing_v10\\AI Driver\\AI Driver-1499950.pt"
+                ]
+            },
+            {
+                "steps": 1999999,
+                "file_path": "results\\CarRacing_v10\\AI Driver\\AI Driver-1999999.onnx",
+                "reward": 1034.2331091165543,
+                "creation_time": 1774490968.3714736,
+                "auxillary_file_paths": [
+                    "results\\CarRacing_v10\\AI Driver\\AI Driver-1999999.pt"
+                ]
+            },
+            {
+                "steps": 2000127,
+                "file_path": "results\\CarRacing_v10\\AI Driver\\AI Driver-2000127.onnx",
+                "reward": 1034.2331091165543,
+                "creation_time": 1774490968.4771054,
+                "auxillary_file_paths": [
+                    "results\\CarRacing_v10\\AI Driver\\AI Driver-2000127.pt"
+                ]
+            }
+        ],
+        "final_checkpoint": {
+            "steps": 2000127,
+            "file_path": "results\\CarRacing_v10\\AI Driver.onnx",
+            "reward": 1034.2331091165543,
+            "creation_time": 1774490968.4771054,
+            "auxillary_file_paths": [
+                "results\\CarRacing_v10\\AI Driver\\AI Driver-2000127.pt"
+            ]
+        }
+    },
+    "metadata": {
+        "stats_format_version": "0.3.0",
+        "mlagents_version": "1.1.0",
+        "torch_version": "2.2.2+cu121"
+    }
+}

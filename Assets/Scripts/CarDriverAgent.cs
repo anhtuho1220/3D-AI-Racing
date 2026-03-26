@@ -66,11 +66,11 @@ public class CarDriverAgent : Agent
     {
         if (e.carTransform == transform) 
         {
-            AddReward(-1f);
+            AddReward(-10f);
             wrongCheckpointCount++;
             if (wrongCheckpointCount >= 3)
             {
-                AddReward(-5.0f);
+                AddReward(-100.0f);
                 EndEpisode();
             }
         }
@@ -236,7 +236,7 @@ public class CarDriverAgent : Agent
         }
 
         // Penalize if >50% of rays are too close to walls
-        if ((float)closeRayCount / totalRays > 0.5f)
+        if ((float)closeRayCount / totalRays > 0.4f)
         {
             AddReward(-0.02f);
         }
@@ -253,6 +253,9 @@ public class CarDriverAgent : Agent
                     rayInput.DetectableTags[rightRay.HitTagIndex] == "Right Walls")
                 {
                     AddReward(0.01f);
+                }
+                else {
+                    AddReward(-0.5f);
                 }
             }
         }
@@ -294,7 +297,7 @@ public class CarDriverAgent : Agent
     {
         if (collision.gameObject.TryGetComponent<Wall>(out _) || collision.gameObject.TryGetComponent<CarDriverAgent>(out _))
         {
-            AddReward(-0.5f);
+            AddReward(-10f);
         }
     }
 
@@ -302,7 +305,7 @@ public class CarDriverAgent : Agent
     {
         if (collision.gameObject.TryGetComponent<Wall>(out _) || collision.gameObject.TryGetComponent<CarDriverAgent>(out _))
         {
-            AddReward(-0.1f);
+            AddReward(-5f);
         }
     }
 }

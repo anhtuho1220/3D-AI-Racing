@@ -195,8 +195,12 @@ public class RandomTrackGenerator : MonoBehaviour
         checkpointGenerator.Rebuild();
     }
 
-    void PlaceCar()
+    [ContextMenu("Re-Place Cars")]
+    public void PlaceCar()
     {
+        if (splineContainer == null) splineContainer = GetComponent<SplineContainer>();
+        if (splineContainer == null || splineContainer.Spline == null) return;
+
         Spline spline = splineContainer.Spline;
         float splineLength = spline.GetLength();
 
