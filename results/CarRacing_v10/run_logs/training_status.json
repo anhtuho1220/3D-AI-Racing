@@ -2,58 +2,58 @@
     "AI Driver": {
         "checkpoints": [
             {
-                "steps": 499964,
-                "file_path": "results\\CarRacing_v10\\AI Driver\\AI Driver-499964.onnx",
-                "reward": -2933.0319480895996,
-                "creation_time": 1774487841.6238976,
-                "auxillary_file_paths": [
-                    "results\\CarRacing_v10\\AI Driver\\AI Driver-499964.pt"
-                ]
-            },
-            {
-                "steps": 999937,
-                "file_path": "results\\CarRacing_v10\\AI Driver\\AI Driver-999937.onnx",
+                "steps": 499938,
+                "file_path": "results\\CarRacing_v10\\AI Driver\\AI Driver-499938.onnx",
                 "reward": null,
-                "creation_time": 1774488865.98446,
+                "creation_time": 1774826146.380816,
                 "auxillary_file_paths": [
-                    "results\\CarRacing_v10\\AI Driver\\AI Driver-999937.pt"
+                    "results\\CarRacing_v10\\AI Driver\\AI Driver-499938.pt"
                 ]
             },
             {
-                "steps": 1499950,
-                "file_path": "results\\CarRacing_v10\\AI Driver\\AI Driver-1499950.onnx",
-                "reward": 1594.0505394637585,
-                "creation_time": 1774489906.6639316,
+                "steps": 999960,
+                "file_path": "results\\CarRacing_v10\\AI Driver\\AI Driver-999960.onnx",
+                "reward": null,
+                "creation_time": 1774827199.0339875,
                 "auxillary_file_paths": [
-                    "results\\CarRacing_v10\\AI Driver\\AI Driver-1499950.pt"
+                    "results\\CarRacing_v10\\AI Driver\\AI Driver-999960.pt"
                 ]
             },
             {
-                "steps": 1999999,
-                "file_path": "results\\CarRacing_v10\\AI Driver\\AI Driver-1999999.onnx",
-                "reward": 1034.2331091165543,
-                "creation_time": 1774490968.3714736,
+                "steps": 1499982,
+                "file_path": "results\\CarRacing_v10\\AI Driver\\AI Driver-1499982.onnx",
+                "reward": null,
+                "creation_time": 1774828221.548973,
                 "auxillary_file_paths": [
-                    "results\\CarRacing_v10\\AI Driver\\AI Driver-1999999.pt"
+                    "results\\CarRacing_v10\\AI Driver\\AI Driver-1499982.pt"
                 ]
             },
             {
-                "steps": 2000127,
-                "file_path": "results\\CarRacing_v10\\AI Driver\\AI Driver-2000127.onnx",
-                "reward": 1034.2331091165543,
-                "creation_time": 1774490968.4771054,
+                "steps": 1999994,
+                "file_path": "results\\CarRacing_v10\\AI Driver\\AI Driver-1999994.onnx",
+                "reward": null,
+                "creation_time": 1774829265.3163364,
                 "auxillary_file_paths": [
-                    "results\\CarRacing_v10\\AI Driver\\AI Driver-2000127.pt"
+                    "results\\CarRacing_v10\\AI Driver\\AI Driver-1999994.pt"
+                ]
+            },
+            {
+                "steps": 2000250,
+                "file_path": "results\\CarRacing_v10\\AI Driver\\AI Driver-2000250.onnx",
+                "reward": null,
+                "creation_time": 1774829265.4680228,
+                "auxillary_file_paths": [
+                    "results\\CarRacing_v10\\AI Driver\\AI Driver-2000250.pt"
                 ]
             }
         ],
         "final_checkpoint": {
-            "steps": 2000127,
+            "steps": 2000250,
             "file_path": "results\\CarRacing_v10\\AI Driver.onnx",
-            "reward": 1034.2331091165543,
-            "creation_time": 1774490968.4771054,
+            "reward": null,
+            "creation_time": 1774829265.4680228,
             "auxillary_file_paths": [
-                "results\\CarRacing_v10\\AI Driver\\AI Driver-2000127.pt"
+                "results\\CarRacing_v10\\AI Driver\\AI Driver-2000250.pt"
             ]
         }
     },

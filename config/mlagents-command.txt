@@ -1,1 +1,7 @@
+C:/ProgramData/miniconda3/Scripts/activate
+
+conda activate ml-agents
+
 mlagents-learn config/CarRacingConfig.yaml --run-id=CarRacing_v2 --initialize-from=CarRacing_v1 --torch-device cuda
+
+mlagents-learn config/CarRacingConfig.yaml --run-id=CarRacing_NoVectors_v2 --initialize-from=CarRacing_NoVectors_v1 --torch-device cuda

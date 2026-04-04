@@ -1,0 +1,65 @@
+{
+    "AI Driver": {
+        "checkpoints": [
+            {
+                "steps": 499968,
+                "file_path": "results\\CarRacing_NoVectors_v5\\AI Driver\\AI Driver-499968.onnx",
+                "reward": null,
+                "creation_time": 1775253996.1085262,
+                "auxillary_file_paths": [
+                    "results\\CarRacing_NoVectors_v5\\AI Driver\\AI Driver-499968.pt"
+                ]
+            },
+            {
+                "steps": 999968,
+                "file_path": "results\\CarRacing_NoVectors_v5\\AI Driver\\AI Driver-999968.onnx",
+                "reward": -530.8845137125916,
+                "creation_time": 1775255010.1653023,
+                "auxillary_file_paths": [
+                    "results\\CarRacing_NoVectors_v5\\AI Driver\\AI Driver-999968.pt"
+                ]
+            },
+            {
+                "steps": 1499958,
+                "file_path": "results\\CarRacing_NoVectors_v5\\AI Driver\\AI Driver-1499958.onnx",
+                "reward": null,
+                "creation_time": 1775256039.075985,
+                "auxillary_file_paths": [
+                    "results\\CarRacing_NoVectors_v5\\AI Driver\\AI Driver-1499958.pt"
+                ]
+            },
+            {
+                "steps": 1999938,
+                "file_path": "results\\CarRacing_NoVectors_v5\\AI Driver\\AI Driver-1999938.onnx",
+                "reward": null,
+                "creation_time": 1775257077.944155,
+                "auxillary_file_paths": [
+                    "results\\CarRacing_NoVectors_v5\\AI Driver\\AI Driver-1999938.pt"
+                ]
+            },
+            {
+                "steps": 2000450,
+                "file_path": "results\\CarRacing_NoVectors_v5\\AI Driver\\AI Driver-2000450.onnx",
+                "reward": null,
+                "creation_time": 1775257078.085424,
+                "auxillary_file_paths": [
+                    "results\\CarRacing_NoVectors_v5\\AI Driver\\AI Driver-2000450.pt"
+                ]
+            }
+        ],
+        "final_checkpoint": {
+            "steps": 2000450,
+            "file_path": "results\\CarRacing_NoVectors_v5\\AI Driver.onnx",
+            "reward": null,
+            "creation_time": 1775257078.085424,
+            "auxillary_file_paths": [
+                "results\\CarRacing_NoVectors_v5\\AI Driver\\AI Driver-2000450.pt"
+            ]
+        }
+    },
+    "metadata": {
+        "stats_format_version": "0.3.0",
+        "mlagents_version": "1.1.0",
+        "torch_version": "2.2.2+cu121"
+    }
+}

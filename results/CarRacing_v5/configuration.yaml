@@ -35,7 +35,7 @@ behaviors:
           memory: null
           goal_conditioning_type: hyper
           deterministic: false
-    init_path: results\CarRacing_v4\AI Driver\checkpoint.pt
+    init_path: results\CarRacing_v10\AI Driver\checkpoint.pt
     keep_checkpoints: 5
     even_checkpoints: false
     max_steps: 2000000
@@ -67,10 +67,10 @@ engine_settings:
 environment_parameters: null
 checkpoint_settings:
   run_id: CarRacing_v5
-  initialize_from: CarRacing_v4
+  initialize_from: CarRacing_v10
   load_model: false
   resume: false
-  force: false
+  force: true
   train_model: false
   inference: false
   results_dir: results

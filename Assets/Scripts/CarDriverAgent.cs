@@ -42,40 +42,6 @@ public class CarDriverAgent : Agent
         }
     }
 
-    private void OnCorrectCheckpoint(object sender, TrackCheckpoints.CarCheckpointEventArgs e)
-    {
-        if (e.carTransform == transform) 
-        {
-            float directionalBonus = 0f;
-            var crossedCheckpoint = trackCheckpoints.GetNextCheckpoint(transform);
-            
-            if (crossedCheckpoint != null)
-            {
-                float alignment = Vector3.Dot(transform.forward, crossedCheckpoint.transform.forward);
-                if (alignment > 0f)
-                {
-                    directionalBonus = alignment; // up to +1f bonus if perfectly aligned
-                }
-            }
-            AddReward(1f + directionalBonus);
-            wrongCheckpointCount = 0;
-        }
-    }
-
-    private void OnWrongCheckpoint(object sender, TrackCheckpoints.CarCheckpointEventArgs e)
-    {
-        if (e.carTransform == transform) 
-        {
-            AddReward(-10f);
-            wrongCheckpointCount++;
-            if (wrongCheckpointCount >= 3)
-            {
-                AddReward(-100.0f);
-                EndEpisode();
-            }
-        }
-    }
-
     public override void OnEpisodeBegin()
     {
         transform.position = startPosition;
@@ -111,10 +77,10 @@ public class CarDriverAgent : Agent
         float directionDot = Vector3.Dot(transform.forward, checkpointForward);
         
         sensor.AddObservation(directionDot);
-        sensor.AddObservation(localVelocity);
+        //sensor.AddObservation(localVelocity);
         
         // Divide by arbitrarily expected max distance (100) to keep Neural Network gradients stable
-        sensor.AddObservation(distanceToCheckpoint / 100f);
+        //sensor.AddObservation(distanceToCheckpoint / 100f);
     }
 
     public override void OnActionReceived(ActionBuffers actions)
@@ -148,9 +114,9 @@ public class CarDriverAgent : Agent
         // Re-calculate the specific forward speed per frame!
         float currentForwardSpeed = Vector3.Dot(carRigidbody.linearVelocity, transform.forward);
         
-        if (currentForwardSpeed > 1f)
+        if (currentForwardSpeed > 0.05f)
         {
-            AddReward(currentForwardSpeed * 0.005f);
+            AddReward(currentForwardSpeed * 0.02f);
         }
         else if (currentForwardSpeed < -1f)
         {
@@ -216,6 +182,7 @@ public class CarDriverAgent : Agent
         }
 
         int closeRayCount = 0;
+        int activeRayCount = 0;
 
         for (int i = 0; i < totalRays; i++)
         {
@@ -226,6 +193,7 @@ public class CarDriverAgent : Agent
                 string hitTag = rayInput.DetectableTags[ray.HitTagIndex];
                 if (hitTag == "Left Walls" || hitTag == "Right Walls")
                 {
+                    activeRayCount++;
                     float hitDistance = ray.HitFraction * rayInput.RayLength;
                     if (hitDistance < closeDistance)
                     {
@@ -235,10 +203,10 @@ public class CarDriverAgent : Agent
             }
         }
 
-        // Penalize if >50% of rays are too close to walls
-        if ((float)closeRayCount / totalRays > 0.4f)
+        // Penalize if >50% of active rays are too close to walls
+        if (activeRayCount > 0 && (float)closeRayCount / activeRayCount > 0.5f)
         {
-            AddReward(-0.02f);
+            AddReward(-0.05f);
         }
 
         // Reward for correct spatial positioning using outermost rays
@@ -255,7 +223,7 @@ public class CarDriverAgent : Agent
                     AddReward(0.01f);
                 }
                 else {
-                    AddReward(-0.5f);
+                    AddReward(-1f);
                 }
             }
         }
@@ -297,7 +265,7 @@ public class CarDriverAgent : Agent
     {
         if (collision.gameObject.TryGetComponent<Wall>(out _) || collision.gameObject.TryGetComponent<CarDriverAgent>(out _))
         {
-            AddReward(-10f);
+            AddReward(-0.5f);
         }
     }
 
@@ -305,7 +273,42 @@ public class CarDriverAgent : Agent
     {
         if (collision.gameObject.TryGetComponent<Wall>(out _) || collision.gameObject.TryGetComponent<CarDriverAgent>(out _))
         {
-            AddReward(-5f);
+            AddReward(-0.1f);
+        }
+    }
+
+    private void OnCorrectCheckpoint(object sender, TrackCheckpoints.CarCheckpointEventArgs e)
+    {
+        if (e.carTransform == transform) 
+        {
+            float directionalBonus = 0f;
+            var crossedCheckpoint = trackCheckpoints.GetNextCheckpoint(transform);
+            
+            if (crossedCheckpoint != null)
+            {
+                float alignment = Vector3.Dot(transform.forward, crossedCheckpoint.transform.forward);
+                if (alignment > 0f)
+                {
+                    directionalBonus = alignment; // up to +1f bonus if perfectly aligned
+                }
+            }
+            AddReward(1f + directionalBonus);
+            wrongCheckpointCount = 0;
+        }
+    }
+
+    private void OnWrongCheckpoint(object sender, TrackCheckpoints.CarCheckpointEventArgs e)
+    {
+        if (e.carTransform == transform) 
+        {
+            wrongCheckpointCount++;
+            AddReward(-10f);
+
+            if (wrongCheckpointCount >= 3)
+            {
+                AddReward(-100.0f);
+                EndEpisode();
+            }
         }
     }
 }

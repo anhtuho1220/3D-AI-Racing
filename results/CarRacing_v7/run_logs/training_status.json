@@ -2,58 +2,58 @@
     "AI Driver": {
         "checkpoints": [
             {
-                "steps": 499968,
-                "file_path": "results\\CarRacing_v7\\AI Driver\\AI Driver-499968.onnx",
-                "reward": 102.312380361557,
-                "creation_time": 1774472171.0589557,
-                "auxillary_file_paths": [
-                    "results\\CarRacing_v7\\AI Driver\\AI Driver-499968.pt"
-                ]
-            },
-            {
-                "steps": 999941,
-                "file_path": "results\\CarRacing_v7\\AI Driver\\AI Driver-999941.onnx",
+                "steps": 770541,
+                "file_path": "results\\CarRacing_v7\\AI Driver\\AI Driver-770541.onnx",
                 "reward": null,
-                "creation_time": 1774473180.849522,
+                "creation_time": 1774812433.7783458,
                 "auxillary_file_paths": [
-                    "results\\CarRacing_v7\\AI Driver\\AI Driver-999941.pt"
+                    "results\\CarRacing_v7\\AI Driver\\AI Driver-770541.pt"
                 ]
             },
             {
-                "steps": 1499968,
-                "file_path": "results\\CarRacing_v7\\AI Driver\\AI Driver-1499968.onnx",
-                "reward": 70.16053190231324,
-                "creation_time": 1774474291.8502831,
+                "steps": 999971,
+                "file_path": "results\\CarRacing_v7\\AI Driver\\AI Driver-999971.onnx",
+                "reward": null,
+                "creation_time": 1774813014.5268538,
                 "auxillary_file_paths": [
-                    "results\\CarRacing_v7\\AI Driver\\AI Driver-1499968.pt"
+                    "results\\CarRacing_v7\\AI Driver\\AI Driver-999971.pt"
                 ]
             },
             {
-                "steps": 1999953,
-                "file_path": "results\\CarRacing_v7\\AI Driver\\AI Driver-1999953.onnx",
-                "reward": 1368.10773229599,
-                "creation_time": 1774475382.556087,
+                "steps": 1499983,
+                "file_path": "results\\CarRacing_v7\\AI Driver\\AI Driver-1499983.onnx",
+                "reward": null,
+                "creation_time": 1774814054.4298887,
                 "auxillary_file_paths": [
-                    "results\\CarRacing_v7\\AI Driver\\AI Driver-1999953.pt"
+                    "results\\CarRacing_v7\\AI Driver\\AI Driver-1499983.pt"
                 ]
             },
             {
-                "steps": 2000017,
-                "file_path": "results\\CarRacing_v7\\AI Driver\\AI Driver-2000017.onnx",
-                "reward": 1368.10773229599,
-                "creation_time": 1774475382.6824956,
+                "steps": 1999985,
+                "file_path": "results\\CarRacing_v7\\AI Driver\\AI Driver-1999985.onnx",
+                "reward": null,
+                "creation_time": 1774815156.961388,
                 "auxillary_file_paths": [
-                    "results\\CarRacing_v7\\AI Driver\\AI Driver-2000017.pt"
+                    "results\\CarRacing_v7\\AI Driver\\AI Driver-1999985.pt"
+                ]
+            },
+            {
+                "steps": 2000241,
+                "file_path": "results\\CarRacing_v7\\AI Driver\\AI Driver-2000241.onnx",
+                "reward": null,
+                "creation_time": 1774815157.1210263,
+                "auxillary_file_paths": [
+                    "results\\CarRacing_v7\\AI Driver\\AI Driver-2000241.pt"
                 ]
             }
         ],
         "final_checkpoint": {
-            "steps": 2000017,
+            "steps": 2000241,
             "file_path": "results\\CarRacing_v7\\AI Driver.onnx",
-            "reward": 1368.10773229599,
-            "creation_time": 1774475382.6824956,
+            "reward": null,
+            "creation_time": 1774815157.1210263,
             "auxillary_file_paths": [
-                "results\\CarRacing_v7\\AI Driver\\AI Driver-2000017.pt"
+                "results\\CarRacing_v7\\AI Driver\\AI Driver-2000241.pt"
             ]
         }
     },

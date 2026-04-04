@@ -75,6 +75,19 @@ public class TrackCheckpoints : MonoBehaviour
             OnCarCorrectCheckpoint?.Invoke(this, new CarCheckpointEventArgs { carTransform = carTransform });
             nextCheckpointIndexList[carIndex] = (nextCheckpointIndexList[carIndex] + 1) % checkpointList.Count;
         } else {
+            int n = checkpointList.Count;
+            if (n > 0)
+            {
+                int last1 = (index - 1 + n) % n;
+                int last2 = (index - 2 + n) % n;
+                int last3 = (index - 3 + n) % n;
+
+                if (checkpointIndex == last1 || checkpointIndex == last2 || checkpointIndex == last3)
+                {
+                    return;
+                }
+            }
+
             Debug.Log($"Wrong Checkpoint {carTransform.name}! Expected {index}, got {checkpointIndex}");
             OnCarWrongCheckpoint?.Invoke(this, new CarCheckpointEventArgs { carTransform = carTransform });
         }
