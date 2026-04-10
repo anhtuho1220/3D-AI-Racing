@@ -87,8 +87,6 @@ public class TrackCheckpoints : MonoBehaviour
                     return;
                 }
             }
-
-            Debug.Log($"Wrong Checkpoint {carTransform.name}! Expected {index}, got {checkpointIndex}");
             OnCarWrongCheckpoint?.Invoke(this, new CarCheckpointEventArgs { carTransform = carTransform });
         }
     }
@@ -100,12 +98,24 @@ public class TrackCheckpoints : MonoBehaviour
         {
             nextCheckpointIndexList[carIndex] = 0;
         }
+        else
+        {
+            carList.Add(carTransform);
+            nextCheckpointIndexList.Add(0);
+        }
     }
 
     public CheckpointSingle GetNextCheckpoint(Transform carTransform)
     {
         int carIndex = carList.IndexOf(carTransform);
-        if (carIndex != -1 && checkpointList.Count > 0)
+        if (carIndex == -1)
+        {
+            carList.Add(carTransform);
+            nextCheckpointIndexList.Add(0);
+            carIndex = carList.Count - 1;
+        }
+        
+        if (carIndex != -1 && checkpointList != null && checkpointList.Count > 0)
         {
             return checkpointList[nextCheckpointIndexList[carIndex]];
         }

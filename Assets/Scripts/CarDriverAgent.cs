@@ -15,30 +15,118 @@ public class CarDriverAgent : Agent
     private RayPerceptionSensorComponent3D raySensorComponent;
     
     private int wrongCheckpointCount = 0;
-    private float closeDistance = 5f; 
+    
+    [Header("Reward Parameters")]
+    [SerializeField] private float closeDistance = 5f; 
+    [SerializeField] private float collisionPenalty = -1f;
+    [SerializeField] private float collisionStayPenalty = -0.5f;
+    [SerializeField] private float wrongCheckpointPenalty = -10f;
+    [SerializeField] private float incorrectDirectionPenalty = -0.02f;
+    [SerializeField] private float movingForwardReward = 0.01f;
+    [SerializeField] private float standingStillPenalty = -1f;
+    [SerializeField] private float wrongRayPenalty = -0.1f;
+    [SerializeField] private float closeWallPenalty = -0.1f;
+    [SerializeField] private float episodeEndPenalty = -100.0f;
+    [SerializeField] private float checkpointReward = 1f;
 
     // Cached ray indices to avoid finding them every frame
-    private int leftRayIndex = -1;
-    private int rightRayIndex = -1;
-    private bool rayIndicesCached = false;
+    private int[] leftRayIndices;
+    private int[] rightRayIndices;
+    private int frontRayIndex = -1;
+
+    // Cached tag indices to avoid string comparison every frame
+    private int leftWallTagIndex = -1;
+    private int rightWallTagIndex = -1;
+
+    private float currentSpeed;
+    private float currentTurning;
+
+    private bool isCloseToObject = false;
+    private bool facingLeftWall = false;
+    private bool facingRightWall = false;
+    private bool isWrongWay = false;
+    private bool isColliding = false;
+    private int collisionCount = 0;
+
+    // Cached per-step to avoid redundant lookups
+    private CheckpointSingle cachedNextCheckpoint;
 
     public override void Initialize()
     {
+        MaxStep = 20000;
+
         carController = GetComponent<PrometeoAIController>();
         carRigidbody = GetComponent<Rigidbody>();
-        raySensorComponent = GetComponent<RayPerceptionSensorComponent3D>();
+        
+        foreach (var sensor in GetComponents<RayPerceptionSensorComponent3D>())
+        {
+            if (sensor.SensorName == "FrontSensor")
+            {
+                raySensorComponent = sensor;
+                break;
+            }
+        }
+        if (raySensorComponent == null) raySensorComponent = GetComponent<RayPerceptionSensorComponent3D>();
+
         trackCheckpoints = FindFirstObjectByType<TrackCheckpoints>();
         
         startPosition = transform.position;
         startRotation = transform.rotation;
+
+        InitializeRayCache();
+    }
+
+    private void InitializeRayCache()
+    {
+        if (raySensorComponent == null) return;
+        var rayInput = raySensorComponent.GetRayPerceptionInput();
+
+        // Cache tag indices to replace per-frame string comparisons
+        for (int i = 0; i < rayInput.DetectableTags.Count; i++)
+        {
+            if (rayInput.DetectableTags[i] == "Left Walls") leftWallTagIndex = i;
+            else if (rayInput.DetectableTags[i] == "Right Walls") rightWallTagIndex = i;
+        }
+
+        for (int i = 0; i < rayInput.Angles.Count; i++)
+        {
+            if (Mathf.Approximately(rayInput.Angles[i], 90f))
+            {
+                frontRayIndex = i;
+                break;
+            }
+        }
+        var indexedAngles = new System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<int, float>>();
+        for (int i = 0; i < rayInput.Angles.Count; i++)
+        {
+            indexedAngles.Add(new System.Collections.Generic.KeyValuePair<int, float>(i, rayInput.Angles[i]));
+        }
+        indexedAngles.Sort((a, b) => a.Value.CompareTo(b.Value));
+        
+        int count = Mathf.Min(3, indexedAngles.Count / 2);
+        if (count == 0 && indexedAngles.Count > 0) count = 1;
+
+        rightRayIndices = new int[count];
+        leftRayIndices = new int[count];
+        for (int i = 0; i < count; i++)
+        {
+            rightRayIndices[i] = indexedAngles[i].Key;
+            leftRayIndices[i] = indexedAngles[indexedAngles.Count - 1 - i].Key;
+        }
     }
 
     void Start()
     {
+        trackCheckpoints.OnCarCorrectCheckpoint += OnCorrectCheckpoint;
+        trackCheckpoints.OnCarWrongCheckpoint += OnWrongCheckpoint;
+    }
+
+    private void OnDestroy()
+    {
         if (trackCheckpoints != null)
         {
-            trackCheckpoints.OnCarCorrectCheckpoint += OnCorrectCheckpoint;
-            trackCheckpoints.OnCarWrongCheckpoint += OnWrongCheckpoint;
+            trackCheckpoints.OnCarCorrectCheckpoint -= OnCorrectCheckpoint;
+            trackCheckpoints.OnCarWrongCheckpoint -= OnWrongCheckpoint;
         }
     }
 
@@ -48,39 +136,36 @@ public class CarDriverAgent : Agent
         transform.rotation = startRotation;
         
         wrongCheckpointCount = 0;
+        isColliding = false;
+        collisionCount = 0;
 
-        if (trackCheckpoints != null) trackCheckpoints.ResetCar(transform);
+        trackCheckpoints.ResetCar(transform);
         carController.ResetCar();
     }
 
     public override void CollectObservations(VectorSensor sensor)
     {
-        Vector3 checkpointForward = Vector3.zero;
-        float distanceToCheckpoint = 0f;
+        if (cachedNextCheckpoint == null)
+            cachedNextCheckpoint = trackCheckpoints.GetNextCheckpoint(transform);
 
-        if (trackCheckpoints != null)
-        {
-            var nextCheckpoint = trackCheckpoints.GetNextCheckpoint(transform);
-            if (nextCheckpoint != null)
-            {
-                checkpointForward = nextCheckpoint.transform.forward;
-                distanceToCheckpoint = Vector3.Distance(transform.position, nextCheckpoint.transform.position);
-            }
-        }
-
-        Vector3 localVelocity = Vector3.zero;
-        if (carRigidbody != null)
-        {
-            localVelocity = transform.InverseTransformDirection(carRigidbody.linearVelocity);
-        }
+        Vector3 checkpointForward = cachedNextCheckpoint.transform.forward;
+        float distanceToCheckpoint = Vector3.Distance(transform.position, cachedNextCheckpoint.transform.position);
 
         float directionDot = Vector3.Dot(transform.forward, checkpointForward);
         
-        sensor.AddObservation(directionDot);
-        //sensor.AddObservation(localVelocity);
-        
-        // Divide by arbitrarily expected max distance (100) to keep Neural Network gradients stable
-        //sensor.AddObservation(distanceToCheckpoint / 100f);
+        // Relative bearing to checkpoint (left/right + forward/back in local space)
+        Vector3 localCheckpointDir = transform.InverseTransformPoint(cachedNextCheckpoint.transform.position);
+
+        float lateralSpeed = transform.InverseTransformDirection(carRigidbody.linearVelocity).x;
+
+        sensor.AddObservation(directionDot);                   // 1 float
+        sensor.AddObservation(currentSpeed / 100f);            // 1 float — forward/back speed
+        sensor.AddObservation(lateralSpeed / 100f);            // 1 float — lateral speed (drift detection)
+        sensor.AddObservation(carRigidbody.angularVelocity.y); // 1 float — yaw rate
+        sensor.AddObservation(distanceToCheckpoint);           // 1 float
+        sensor.AddObservation(isColliding ? 1f : 0f);          // 1 float
+        sensor.AddObservation(localCheckpointDir.x);           // 1 float — left/right bearing
+        sensor.AddObservation(localCheckpointDir.z);           // 1 float — forward/back bearing
     }
 
     public override void OnActionReceived(ActionBuffers actions)
@@ -97,105 +182,114 @@ public class CarDriverAgent : Agent
         
         carController.SetInputs(steering, throttle, brake);
 
-        if (carRigidbody != null)
-        {
-            ProcessMovementRewards();
-            ProcessCheckpointAlignmentRewards();
-        }
+        // Cache checkpoint once per decision step
+        cachedNextCheckpoint = trackCheckpoints.GetNextCheckpoint(transform);
 
-        if (raySensorComponent != null && raySensorComponent.RaySensor != null)
+        ProcessRaycasts();
+        ProcessMovementRewards();
+        ProcessCheckpointAlignmentRewards();
+
+        // Apply collision-stay penalty at decision rate, not physics rate
+        if (isColliding)
         {
-            ProcessRaycastRewards();
+            AddReward(collisionStayPenalty);
         }
     }
 
     private void ProcessMovementRewards()
     {
-        // Re-calculate the specific forward speed per frame!
-        float currentForwardSpeed = Vector3.Dot(carRigidbody.linearVelocity, transform.forward);
+        // Re-calculate the speed and turning per frame!
+        currentSpeed = transform.InverseTransformDirection(carRigidbody.linearVelocity).z;
+        currentTurning = transform.InverseTransformDirection(carRigidbody.angularVelocity).y;
         
-        if (currentForwardSpeed > 0.05f)
+        if (currentSpeed > 1f)
         {
-            AddReward(currentForwardSpeed * 0.02f);
+            if (isWrongWay) { AddReward(-currentSpeed * 0.1f); }
+            else { AddReward(currentSpeed * movingForwardReward); }
         }
-        else if (currentForwardSpeed < -1f)
+        else if (currentSpeed < -1f)
         {
-            AddReward(-0.01f);
+            if (isCloseToObject) { AddReward(0.05f); }
+            else { AddReward(-0.05f); }
         }
         else
         {
-            AddReward(-0.05f); // Penalize for standing still
+            AddReward(standingStillPenalty); // Penalize for standing still
+        }
+
+        if (isWrongWay)
+        {
+            AddReward(-0.5f);
+        }
+
+        if (isCloseToObject)
+        {
+            if (currentSpeed < 0)
+            {
+                AddReward(0.01f);
+                if (facingLeftWall && currentTurning > 0)
+                {
+                    AddReward(currentTurning * 0.1f);
+                }
+                else if (facingRightWall && currentTurning < 0)
+                {
+                    AddReward(currentTurning * -0.1f);
+                }
+            }
+            else
+            {
+                AddReward(closeWallPenalty);
+            }
         }
     }
 
     private void ProcessCheckpointAlignmentRewards()
     {
-        if (trackCheckpoints == null) return;
-        
-        var nextCheckpoint = trackCheckpoints.GetNextCheckpoint(transform);
-        if (nextCheckpoint != null)
+        float directionDot = Vector3.Dot(transform.forward, cachedNextCheckpoint.transform.forward);
+        if (directionDot < 0f)
         {
-            float directionDot = Vector3.Dot(transform.forward, nextCheckpoint.transform.forward);
-            if (directionDot < 0f)
-            {
-                AddReward(-0.02f);
-            }
+            AddReward(incorrectDirectionPenalty);
+        }
 
-            Vector3 directionToCheckpoint = (nextCheckpoint.transform.position - transform.position).normalized;
-            float velocityAlignment = Vector3.Dot(transform.forward, directionToCheckpoint);
+        Vector3 directionToCheckpoint = (cachedNextCheckpoint.transform.position - transform.position).normalized;
+        float velocityAlignment = Vector3.Dot(transform.forward, directionToCheckpoint);
 
-            if (velocityAlignment > 0f) 
-            {
-                AddReward(velocityAlignment * 0.01f); 
-            }
+        if (velocityAlignment > 0f) 
+        {
+            AddReward(velocityAlignment * 0.1f);
         }
     }
 
-    private void ProcessRaycastRewards()
+    private void ProcessRaycasts()
     {
+        isCloseToObject = false;
+        facingLeftWall = false;
+        facingRightWall = false;
+        isWrongWay = false;
+
         var rayOutput = raySensorComponent.RaySensor.RayPerceptionOutput;
         var rayInput = raySensorComponent.GetRayPerceptionInput();
 
         if (rayOutput.RayOutputs == null || rayOutput.RayOutputs.Length == 0 || rayInput.Angles.Count == 0) return;
 
         int totalRays = rayOutput.RayOutputs.Length;
-        
-        // Cache min/max angles to find the outermost rays (leftmost/rightmost) just once
-        if (!rayIndicesCached) 
-        {
-             float maxAngle = float.MinValue;
-             float minAngle = float.MaxValue;
-             for (int i = 0; i < rayInput.Angles.Count; i++)
-             {
-                 if (rayInput.Angles[i] > maxAngle)
-                 {
-                     maxAngle = rayInput.Angles[i];
-                     leftRayIndex = i;
-                 }
-                 if (rayInput.Angles[i] < minAngle)
-                 {
-                     minAngle = rayInput.Angles[i];
-                     rightRayIndex = i;
-                 }
-             }
-             rayIndicesCached = true;
-        }
 
         int closeRayCount = 0;
         int activeRayCount = 0;
 
+        bool wrongLeftRayHit = false;
+        bool wrongRightRayHit = false;
+
         for (int i = 0; i < totalRays; i++)
         {
             var ray = rayOutput.RayOutputs[i];
-            
+            float hitDistance = ray.HitFraction * rayInput.RayLength;
             if (ray.HitTaggedObject)
             {
-                string hitTag = rayInput.DetectableTags[ray.HitTagIndex];
-                if (hitTag == "Left Walls" || hitTag == "Right Walls")
+                if (hitDistance < closeDistance)
                 {
                     activeRayCount++;
-                    float hitDistance = ray.HitFraction * rayInput.RayLength;
-                    if (hitDistance < closeDistance)
+                    if (ray.HitTagIndex == leftWallTagIndex || ray.HitTagIndex == rightWallTagIndex)
                     {
                         closeRayCount++;
                     }
@@ -203,28 +297,62 @@ public class CarDriverAgent : Agent
             }
         }
 
-        // Penalize if >50% of active rays are too close to walls
-        if (activeRayCount > 0 && (float)closeRayCount / activeRayCount > 0.5f)
+        // Penalize if >40% of active rays are too close to walls
+        if (activeRayCount > 0 && (float)closeRayCount / activeRayCount > 0.4f)
         {
-            AddReward(-0.05f);
+            isCloseToObject = true;
+        }
+
+        if (frontRayIndex != -1)
+        {
+            var frontRay = rayOutput.RayOutputs[frontRayIndex];
+            if (frontRay.HitTaggedObject)
+            {
+                if (frontRay.HitTagIndex == leftWallTagIndex)
+                {
+                    facingLeftWall = true;
+                }
+                else if (frontRay.HitTagIndex == rightWallTagIndex)
+                {
+                    facingRightWall = true;
+                }
+            }
         }
 
         // Reward for correct spatial positioning using outermost rays
-        if (leftRayIndex >= 0 && rightRayIndex >= 0)
+        if (leftRayIndices != null && rightRayIndices != null)
         {
-            var leftRay = rayOutput.RayOutputs[leftRayIndex];
-            var rightRay = rayOutput.RayOutputs[rightRayIndex];
-
-            if (leftRay.HitTaggedObject && rightRay.HitTaggedObject)
+            for (int i = 0; i < leftRayIndices.Length; i++)
             {
-                if (rayInput.DetectableTags[leftRay.HitTagIndex] == "Left Walls" && 
-                    rayInput.DetectableTags[rightRay.HitTagIndex] == "Right Walls")
+                var leftRay = rayOutput.RayOutputs[leftRayIndices[i]];
+                if (leftRay.HitTaggedObject)
                 {
-                    AddReward(0.01f);
+                    if (leftRay.HitTagIndex == leftWallTagIndex) { AddReward(0.01f); }
+                    else if (leftRay.HitTagIndex == rightWallTagIndex)
+                    {
+                        wrongLeftRayHit = true;
+                        AddReward(wrongRayPenalty);
+                    }
                 }
-                else {
-                    AddReward(-1f);
+            }
+
+            for (int i = 0; i < rightRayIndices.Length; i++)
+            {
+                var rightRay = rayOutput.RayOutputs[rightRayIndices[i]];
+                if (rightRay.HitTaggedObject)
+                {
+                    if (rightRay.HitTagIndex == rightWallTagIndex) { AddReward(0.01f); }
+                    else if (rightRay.HitTagIndex == leftWallTagIndex)
+                    {
+                        wrongRightRayHit = true;
+                        AddReward(wrongRayPenalty);
+                    }
                 }
+            }
+
+            if (wrongLeftRayHit && wrongRightRayHit)
+            {
+                isWrongWay = true;
             }
         }
     }
@@ -261,19 +389,36 @@ public class CarDriverAgent : Agent
         }
     }
 
+    private bool IsRelevantCollision(Collision collision)
+    {
+        return collision.gameObject.TryGetComponent<Wall>(out _) || collision.gameObject.TryGetComponent<CarDriverAgent>(out _);
+    }
+
     private void OnCollisionEnter(Collision collision)
     {
-        if (collision.gameObject.TryGetComponent<Wall>(out _) || collision.gameObject.TryGetComponent<CarDriverAgent>(out _))
+        if (IsRelevantCollision(collision))
         {
-            AddReward(-0.5f);
+            collisionCount++;
+            isColliding = true;
+            AddReward(collisionPenalty);
         }
     }
 
     private void OnCollisionStay(Collision collision)
     {
-        if (collision.gameObject.TryGetComponent<Wall>(out _) || collision.gameObject.TryGetComponent<CarDriverAgent>(out _))
+        // Only maintain the flag — penalty is now applied at decision rate in OnActionReceived
+        if (IsRelevantCollision(collision))
         {
-            AddReward(-0.1f);
+            isColliding = true;
+        }
+    }
+
+    private void OnCollisionExit(Collision collision)
+    {
+        if (IsRelevantCollision(collision))
+        {
+            collisionCount = Mathf.Max(0, collisionCount - 1);
+            isColliding = collisionCount > 0;
         }
     }
 
@@ -281,18 +426,19 @@ public class CarDriverAgent : Agent
     {
         if (e.carTransform == transform) 
         {
+            // Use cached checkpoint — this is the one we just crossed (cached before TrackCheckpoints advances the index)
             float directionalBonus = 0f;
-            var crossedCheckpoint = trackCheckpoints.GetNextCheckpoint(transform);
             
-            if (crossedCheckpoint != null)
+            if (cachedNextCheckpoint != null)
             {
-                float alignment = Vector3.Dot(transform.forward, crossedCheckpoint.transform.forward);
+                float alignment = Vector3.Dot(transform.forward, cachedNextCheckpoint.transform.forward);
                 if (alignment > 0f)
                 {
                     directionalBonus = alignment; // up to +1f bonus if perfectly aligned
                 }
             }
-            AddReward(1f + directionalBonus);
+            
+            AddReward(checkpointReward + directionalBonus);
             wrongCheckpointCount = 0;
         }
     }
@@ -302,11 +448,11 @@ public class CarDriverAgent : Agent
         if (e.carTransform == transform) 
         {
             wrongCheckpointCount++;
-            AddReward(-10f);
+            AddReward(wrongCheckpointPenalty);
 
             if (wrongCheckpointCount >= 3)
             {
-                AddReward(-100.0f);
+                AddReward(episodeEndPenalty);
                 EndEpisode();
             }
         }

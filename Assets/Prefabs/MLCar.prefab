@@ -5060,6 +5060,7 @@ GameObject:
   - component: {fileID: 1925088219943275491}
   - component: {fileID: 2504801036307541319}
   - component: {fileID: 2485924920847338804}
+  - component: {fileID: 5488029202365037598}
   - component: {fileID: 5848212338288908117}
   - component: {fileID: -8911575466710694603}
   - component: {fileID: 3062093507567216602}
@@ -5128,23 +5129,54 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6bb6b867a41448888c1cd4f99643ad71, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.ML-Agents::Unity.MLAgents.Sensors.RayPerceptionSensorComponent3D
-  m_SensorName: RayPerceptionSensor
+  m_SensorName: FrontSensor
+  m_DetectableTags:
+  - Left Walls
+  - Right Walls
+  - Car
+  m_RaysPerDirection: 4
+  m_MaxRayDegrees: 45
+  m_SphereCastRadius: 0.5
+  m_RayLength: 100
+  m_RayLayerMask:
+    serializedVersion: 2
+    m_Bits: 4294959048
+  m_ObservationStacks: 3
+  m_AlternatingRayOrder: 0
+  m_UseBatchedRaycasts: 0
+  rayHitColor: {r: 0.1960784, g: 0.8039216, b: 0.1960784, a: 1}
+  rayMissColor: {r: 1, g: 1, b: 1, a: 1}
+  m_StartVerticalOffset: 1
+  m_EndVerticalOffset: 0.8
+--- !u!114 &5488029202365037598
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1723835382564497634}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6bb6b867a41448888c1cd4f99643ad71, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.ML-Agents::Unity.MLAgents.Sensors.RayPerceptionSensorComponent3D
+  m_SensorName: RearSensor
   m_DetectableTags:
   - Left Walls
   - Right Walls
   - Checkpoint
   - Car
-  m_RaysPerDirection: 7
-  m_MaxRayDegrees: 60
+  m_RaysPerDirection: 3
+  m_MaxRayDegrees: 160
   m_SphereCastRadius: 0.5
-  m_RayLength: 50
+  m_RayLength: 100
   m_RayLayerMask:
     serializedVersion: 2
     m_Bits: 4294967240
-  m_ObservationStacks: 5
-  m_AlternatingRayOrder: 0
+  m_ObservationStacks: 1
+  m_AlternatingRayOrder: 1
   m_UseBatchedRaycasts: 0
-  rayHitColor: {r: 0.1960784, g: 0.8039216, b: 0.1960784, a: 1}
+  rayHitColor: {r: 1, g: 0, b: 0, a: 1}
   rayMissColor: {r: 1, g: 1, b: 1, a: 1}
   m_StartVerticalOffset: 1
   m_EndVerticalOffset: 0.8
@@ -5160,7 +5192,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b9a919663e0fbb641b402a06994b2e34, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PrometeoAIController
-  maxSpeed: 90
+  maxSpeed: 100
   maxReverseSpeed: 45
   accelerationMultiplier: 2
   maxSteeringAngle: 27
@@ -5206,6 +5238,17 @@ MonoBehaviour:
     maxStep: 0
   hasUpgradedFromAgentParameters: 1
   MaxStep: 20000
+  closeDistance: 5
+  collisionPenalty: -0.5
+  collisionStayPenalty: -0.01
+  wrongCheckpointPenalty: -10
+  incorrectDirectionPenalty: -0.02
+  movingForwardReward: 0.05
+  standingStillPenalty: -0.05
+  wrongRayPenalty: -0.1
+  closeWallPenalty: -0.01
+  episodeEndPenalty: -100
+  checkpointReward: 1
 --- !u!114 &3062093507567216602
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5219,8 +5262,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Unity.ML-Agents::Unity.MLAgents.Policies.BehaviorParameters
   m_BrainParameters:
-    VectorObservationSize: 1
-    NumStackedVectorObservations: 1
+    VectorObservationSize: 8
+    NumStackedVectorObservations: 8
     m_ActionSpec:
       m_NumContinuousActions: 2
       BranchSizes: 02000000

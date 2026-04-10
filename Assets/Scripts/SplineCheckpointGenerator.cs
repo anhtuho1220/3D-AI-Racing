@@ -238,8 +238,10 @@ public class SplineCheckpointGenerator : MonoBehaviour
             Vector3 position = (Vector3)posFunc + Vector3.up * m_CheckpointYOffset;
             Quaternion rotation = Quaternion.LookRotation(tangentFunc, upFunc) * Quaternion.Euler(0, m_CheckpointYRotation, 0);
 
-            GameObject cp = Instantiate(m_CheckpointPrefab, position, rotation);
+            GameObject cp = Instantiate(m_CheckpointPrefab);
             cp.transform.parent = m_CheckpointsContainer.transform;
+            cp.transform.localPosition = position;
+            cp.transform.localRotation = rotation;
             cp.name = $"Checkpoint_{i}";
 
             CheckpointSingle checkScript = cp.GetComponentInChildren<CheckpointSingle>();

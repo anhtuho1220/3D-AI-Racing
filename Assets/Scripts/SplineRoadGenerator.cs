@@ -41,6 +41,10 @@ public class SplineRoadGenerator : MonoBehaviour
     private float m_WallOffset = 0f;
 
     [SerializeField]
+    [Tooltip("Maximum miter scale for wall joins on tight turns. Lower = less clipping but beveled corners.")]
+    private float m_MiterLimit = 2.5f;
+
+    [SerializeField]
     private bool m_Optimize = true;
 
     [SerializeField]
@@ -115,6 +119,7 @@ public class SplineRoadGenerator : MonoBehaviour
     public float WallHeight { get => m_WallHeight; set { if (m_WallHeight != value) { m_WallHeight = value; m_RebuildRequested = true; } } }
     public float WallThickness { get => m_WallThickness; set { if (m_WallThickness != value) { m_WallThickness = value; m_RebuildRequested = true; } } }
     public float WallOffset { get => m_WallOffset; set { if (m_WallOffset != value) { m_WallOffset = value; m_RebuildRequested = true; } } }
+    public float MiterLimit { get => m_MiterLimit; set { if (m_MiterLimit != value) { m_MiterLimit = value; m_RebuildRequested = true; } } }
 
     public bool Optimize
     {
@@ -390,79 +395,7 @@ public class SplineRoadGenerator : MonoBehaviour
 
         if (m_GenerateWalls)
         {
-            for (int i = 0; i < samples.Count; i++)
-            {
-                RoadSample s = samples[i];
-                Vector3 pos = s.position;
-                Vector3 up = s.up;
-                Vector3 right = s.right;
-
-                // Left wall
-                Vector3 leftInnerBottom = pos - (right * (halfWidth + m_WallOffset));
-                Vector3 leftInnerTop = leftInnerBottom + up * m_WallHeight;
-                Vector3 leftOuterTop = leftInnerTop - right * m_WallThickness;
-                Vector3 leftOuterBottom = leftInnerBottom - right * m_WallThickness;
-
-                // Right wall
-                Vector3 rightInnerBottom = pos + (right * (halfWidth + m_WallOffset));
-                Vector3 rightInnerTop = rightInnerBottom + up * m_WallHeight;
-                Vector3 rightOuterTop = rightInnerTop + right * m_WallThickness;
-                Vector3 rightOuterBottom = rightInnerBottom + right * m_WallThickness;
-
-                int baseIdx = m_Positions.Count;
-                m_Positions.Add(leftInnerBottom);
-                m_Positions.Add(leftInnerTop);
-                m_Positions.Add(leftOuterTop);
-                m_Positions.Add(leftOuterBottom);
-
-                m_Positions.Add(rightOuterBottom);
-                m_Positions.Add(rightOuterTop);
-                m_Positions.Add(rightInnerTop);
-                m_Positions.Add(rightInnerBottom);
-
-                for (int n = 0; n < 8; n++) m_Normals.Add(up);
-
-                float u = s.vCoord;
-                m_UVs.Add(new Vector2(u, 0)); m_UVs.Add(new Vector2(u, 1)); m_UVs.Add(new Vector2(u, 1)); m_UVs.Add(new Vector2(u, 0));
-                m_UVs.Add(new Vector2(u, 0)); m_UVs.Add(new Vector2(u, 1)); m_UVs.Add(new Vector2(u, 1)); m_UVs.Add(new Vector2(u, 0));
-
-                if (i < samples.Count - 1)
-                {
-                    int currentBaseLeft = baseIdx;
-                    int nextBaseLeft = baseIdx + 8;
-                    
-                    int currentBaseRight = baseIdx + 4;
-                    int nextBaseRight = baseIdx + 12;
-
-                    for (int j = 0; j < 4; j++)
-                    {
-                        int current = j;
-                        int next = (j + 1) % 4;
-                        
-                        m_WallIndices.Add(currentBaseLeft + current);
-                        m_WallIndices.Add(currentBaseLeft + next);
-                        m_WallIndices.Add(nextBaseLeft + next);
-                        
-                        m_WallIndices.Add(currentBaseLeft + current);
-                        m_WallIndices.Add(nextBaseLeft + next);
-                        m_WallIndices.Add(nextBaseLeft + current);
-                    }
-
-                    for (int j = 0; j < 4; j++)
-                    {
-                        int current = j;
-                        int next = (j + 1) % 4;
-                        
-                        m_WallIndices.Add(currentBaseRight + current);
-                        m_WallIndices.Add(currentBaseRight + next);
-                        m_WallIndices.Add(nextBaseRight + next);
-                        
-                        m_WallIndices.Add(currentBaseRight + current);
-                        m_WallIndices.Add(nextBaseRight + next);
-                        m_WallIndices.Add(nextBaseRight + current);
-                    }
-                }
-            }
+            BuildWallMesh(samples, halfWidth);
         }
 
         m_Mesh.SetVertices(m_Positions);
@@ -480,6 +413,155 @@ public class SplineRoadGenerator : MonoBehaviour
         if (meshCollider != null)
         {
             meshCollider.sharedMesh = m_Mesh;
+        }
+    }
+
+    private void BuildWallMesh(List<RoadSample> samples, float halfWidth)
+    {
+        float innerOffset = halfWidth + m_WallOffset;
+        float outerOffset = innerOffset + m_WallThickness;
+        int count = samples.Count;
+
+        // Pre-compute wall edge positions with miter correction
+        Vector3[] leftInner = new Vector3[count];
+        Vector3[] leftOuter = new Vector3[count];
+        Vector3[] rightInner = new Vector3[count];
+        Vector3[] rightOuter = new Vector3[count];
+
+        for (int i = 0; i < count; i++)
+        {
+            Vector3 pos = samples[i].position;
+            Vector3 right = samples[i].right;
+
+            float leftScale = 1f;
+            float rightScale = 1f;
+            Vector3 leftDir = -right;
+            Vector3 rightDir = right;
+
+            // Compute miter joins for interior points
+            if (i > 0 && i < count - 1)
+            {
+                Vector3 prevRight = samples[i - 1].right;
+
+                // Miter direction = bisector of consecutive outward normals
+                Vector3 leftMiter = ((-prevRight) + (-right)).normalized;
+                Vector3 rightMiter = (prevRight + right).normalized;
+
+                if (leftMiter.sqrMagnitude > 0.001f)
+                {
+                    float cosAngle = Vector3.Dot(leftMiter, -right);
+                    if (cosAngle > 0.01f)
+                    {
+                        leftScale = Mathf.Min(1f / cosAngle, m_MiterLimit);
+                        leftDir = leftMiter;
+                    }
+                }
+
+                if (rightMiter.sqrMagnitude > 0.001f)
+                {
+                    float cosAngle = Vector3.Dot(rightMiter, right);
+                    if (cosAngle > 0.01f)
+                    {
+                        rightScale = Mathf.Min(1f / cosAngle, m_MiterLimit);
+                        rightDir = rightMiter;
+                    }
+                }
+
+                // Curvature clamping: prevent inner wall from exceeding curve radius
+                Vector3 prevPos = samples[i - 1].position;
+                Vector3 nextPos = samples[i + 1].position;
+                Vector3 dir1 = (pos - prevPos).normalized;
+                Vector3 dir2 = (nextPos - pos).normalized;
+                float turnAngle = Mathf.Acos(Mathf.Clamp(Vector3.Dot(dir1, dir2), -1f, 1f));
+
+                if (turnAngle > 0.01f)
+                {
+                    float avgDist = (Vector3.Distance(prevPos, pos) + Vector3.Distance(pos, nextPos)) * 0.5f;
+                    float localRadius = avgDist / turnAngle;
+                    float maxOffset = Mathf.Max(localRadius * 0.85f, m_WallThickness);
+
+                    // Determine turn direction via cross product
+                    float crossY = dir1.x * dir2.z - dir1.z * dir2.x;
+
+                    if (crossY > 0.01f) // Left turn → clamp left (inner) wall
+                    {
+                        float clampedInner = Mathf.Min(innerOffset * leftScale, maxOffset);
+                        leftScale = clampedInner / Mathf.Max(innerOffset, 0.001f);
+                    }
+                    else if (crossY < -0.01f) // Right turn → clamp right (inner) wall
+                    {
+                        float clampedInner = Mathf.Min(innerOffset * rightScale, maxOffset);
+                        rightScale = clampedInner / Mathf.Max(innerOffset, 0.001f);
+                    }
+                }
+            }
+
+            leftInner[i] = pos + leftDir * (innerOffset * leftScale);
+            leftOuter[i] = pos + leftDir * (outerOffset * leftScale);
+            rightInner[i] = pos + rightDir * (innerOffset * rightScale);
+            rightOuter[i] = pos + rightDir * (outerOffset * rightScale);
+        }
+
+        // Build wall mesh from computed positions
+        for (int i = 0; i < count; i++)
+        {
+            Vector3 up = samples[i].up;
+            float u = samples[i].vCoord;
+
+            int baseIdx = m_Positions.Count;
+
+            // Left wall: inner bottom, inner top, outer top, outer bottom
+            m_Positions.Add(leftInner[i]);
+            m_Positions.Add(leftInner[i] + up * m_WallHeight);
+            m_Positions.Add(leftOuter[i] + up * m_WallHeight);
+            m_Positions.Add(leftOuter[i]);
+
+            // Right wall: outer bottom, outer top, inner top, inner bottom
+            m_Positions.Add(rightOuter[i]);
+            m_Positions.Add(rightOuter[i] + up * m_WallHeight);
+            m_Positions.Add(rightInner[i] + up * m_WallHeight);
+            m_Positions.Add(rightInner[i]);
+
+            for (int n = 0; n < 8; n++) m_Normals.Add(up);
+
+            m_UVs.Add(new Vector2(u, 0)); m_UVs.Add(new Vector2(u, 1)); m_UVs.Add(new Vector2(u, 1)); m_UVs.Add(new Vector2(u, 0));
+            m_UVs.Add(new Vector2(u, 0)); m_UVs.Add(new Vector2(u, 1)); m_UVs.Add(new Vector2(u, 1)); m_UVs.Add(new Vector2(u, 0));
+
+            if (i < count - 1)
+            {
+                int currentBaseLeft = baseIdx;
+                int nextBaseLeft = baseIdx + 8;
+                int currentBaseRight = baseIdx + 4;
+                int nextBaseRight = baseIdx + 12;
+
+                for (int j = 0; j < 4; j++)
+                {
+                    int current = j;
+                    int next = (j + 1) % 4;
+
+                    m_WallIndices.Add(currentBaseLeft + current);
+                    m_WallIndices.Add(currentBaseLeft + next);
+                    m_WallIndices.Add(nextBaseLeft + next);
+
+                    m_WallIndices.Add(currentBaseLeft + current);
+                    m_WallIndices.Add(nextBaseLeft + next);
+                    m_WallIndices.Add(nextBaseLeft + current);
+                }
+
+                for (int j = 0; j < 4; j++)
+                {
+                    int current = j;
+                    int next = (j + 1) % 4;
+
+                    m_WallIndices.Add(currentBaseRight + current);
+                    m_WallIndices.Add(currentBaseRight + next);
+                    m_WallIndices.Add(nextBaseRight + next);
+
+                    m_WallIndices.Add(currentBaseRight + current);
+                    m_WallIndices.Add(nextBaseRight + next);
+                    m_WallIndices.Add(nextBaseRight + current);
+                }
+            }
         }
     }
 
