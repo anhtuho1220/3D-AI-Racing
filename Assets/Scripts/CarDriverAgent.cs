@@ -202,12 +202,12 @@ public class CarDriverAgent : Agent
         currentSpeed = transform.InverseTransformDirection(carRigidbody.linearVelocity).z;
         currentTurning = transform.InverseTransformDirection(carRigidbody.angularVelocity).y;
         
-        if (currentSpeed > 1f)
+        if (currentSpeed > 0.5f)
         {
             if (isWrongWay) { AddReward(-currentSpeed * 0.1f); }
-            else { AddReward(currentSpeed * movingForwardReward); }
+            else { AddReward(currentSpeed * movingForwardReward + 0.01f); }
         }
-        else if (currentSpeed < -1f)
+        else if (currentSpeed < -0.5f)
         {
             if (isCloseToObject) { AddReward(0.05f); }
             else { AddReward(-0.05f); }
