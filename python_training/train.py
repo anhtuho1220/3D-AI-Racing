@@ -1,10 +1,4 @@
 """
-Custom PyTorch PPO Training Script for Unity ML-Agents Car Racing
-=================================================================
-
-Uses the mlagents_envs low-level Python API as a bridge to communicate with
-the Unity environment, while training with a fully custom PyTorch PPO model.
-
 Requirements:
     pip install mlagents-envs torch numpy tensorboard
 

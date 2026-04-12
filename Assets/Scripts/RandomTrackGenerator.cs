@@ -7,7 +7,7 @@ using System.Collections.Generic;
 public class RandomTrackGenerator : MonoBehaviour
 {
     [Header("Track Shape")]
-    public int pointCount = 15;
+    public int pointCount = 20;
     public float minPointDistance = 10f;
     public float radius = 50f;
     public float variation = 15f;
@@ -44,9 +44,15 @@ public class RandomTrackGenerator : MonoBehaviour
 
     [Header("Generation Settings")]
     [Tooltip("Maximum attempts to generate a non-self-intersecting track")]
-    public int maxGenerationAttempts = 10;
+    public int maxGenerationAttempts = 20;
     [Tooltip("Minimum turn angle dot product. Corners sharper than this are softened. -0.5 = 120°")]
     public float minCornerDot = -0.5f;
+    [Tooltip("How aggressively midpoints are displaced inwards (0 = convex only, 1 = very concave)")]
+    [Range(0f, 1f)]
+    public float displacementStrength = 0.6f;
+    [Tooltip("Number of Chaikin smoothing passes (more = smoother)")]
+    [Range(1, 5)]
+    public int smoothingPasses = 3;
 
     private SplineContainer splineContainer;
     private SplineRoadGenerator roadGenerator;
@@ -75,19 +81,20 @@ public class RandomTrackGenerator : MonoBehaviour
                 continue;
             }
 
-            if (!HasSelfIntersection(points))
+            // Check that the road surface (with width) doesn't overlap itself
+            if (!HasSelfIntersection(points) && !HasWidthOverlap(points, trackWidth * 0.85f))
             {
                 valid = true;
                 break;
             }
 
-            Debug.LogWarning($"Track generation attempt {attempt + 1}: self-intersection detected. Retrying...");
+            Debug.LogWarning($"Track generation attempt {attempt + 1}: self-intersection or width-overlap detected. Retrying...");
         }
 
         if (!valid)
         {
             Debug.LogError($"Could not generate a valid track after {maxGenerationAttempts} attempts. " +
-                           "Try increasing pointCount, decreasing variation, or adjusting minPointDistance.");
+                           "Try increasing radius, decreasing variation/displacementStrength, or adjusting minPointDistance.");
             if (points == null || points.Count < 3) return;
         }
 
@@ -112,74 +119,194 @@ public class RandomTrackGenerator : MonoBehaviour
         SetupCheckpoints();
     }
 
+    // ─────────────────────────────────────────────────────────
+    // F1-STYLE TRACK GENERATION (Convex Hull + Displacement)
+    // ─────────────────────────────────────────────────────────
+
     private List<float3> GenerateTrackPoints()
     {
-        // F1-style randomness: Use Perlin noise sampled in a circle to create organic, seamless shapes.
-        // Also apply random aspect ratio to create L/R/Oval shapes instead of perfect circles.
+        // ── Step 1: Scatter random seed points ──
+        var scatterPoints = ScatterRandomPoints(pointCount, radius);
 
-        float seed = UnityEngine.Random.Range(0f, 100f);
-        float noiseFreq = UnityEngine.Random.Range(minNoiseFreq, maxNoiseFreq);
-        
-        // Random Aspect Ratio (Stretch X or Z) to break circular symmetry
-        float scaleX = UnityEngine.Random.Range(0.5f, 2f);
-        float scaleZ = UnityEngine.Random.Range(0.5f, 2f);
+        // ── Step 2: Compute convex hull → guaranteed non-intersecting base ──
+        var hull = ConvexHull(scatterPoints);
+        if (hull.Count < 3) return hull;
 
+        // ── Step 3: Midpoint displacement → add concavities (chicanes, hairpins) ──
+        var displaced = MidpointDisplace(hull, displacementStrength);
+
+        // ── Step 4: Chaikin subdivision smoothing → organic curves ──
+        var smooth = displaced;
+        for (int i = 0; i < smoothingPasses; i++)
+            smooth = ChaikinSmooth(smooth);
+
+        // ── Step 5: Enforce minimum spacing ──
+        var filtered = EnforceMinDistance(smooth, minPointDistance);
+
+        // ── Step 6: Randomize direction ──
         bool isClockwise = UnityEngine.Random.value > 0.5f;
-
-        var points = new List<float3>();
-
-        for (int i = 0; i < pointCount; i++)
-        {
-            float t = (float)i / pointCount;
-            float angle = t * Mathf.PI * 2;
-
-            // Sample 2D Perlin noise in a circle to ensure the start and end match perfectly (Seamless loop)
-            float noiseX = math.cos(angle) * noiseFreq;
-            float noiseY = math.sin(angle) * noiseFreq;
-            float noiseVal = Mathf.PerlinNoise(seed + noiseX, seed + noiseY); // 0..1
-
-            // Map noise 0..1 to -variation..variation
-            float currentVar = Mathf.Lerp(-variation, variation, noiseVal);
-
-            // Clamp radius 
-            float effectiveRadius = Mathf.Max(radius + currentVar, trackWidth * 2.5f);
-
-            // Apply nonuniform scaling
-            float x = math.cos(angle) * effectiveRadius * scaleX;
-            float z = math.sin(angle) * effectiveRadius * scaleZ;
-
-            points.Add(new float3(x, 0, z));
-        }
-
-        // Filter points to prevent overlapping segments
-        var filteredPoints = new List<float3>();
-        if (points.Count > 0)
-        {
-            filteredPoints.Add(points[0]);
-            for (int i = 1; i < points.Count; i++)
-            {
-                if (math.distance(points[i], filteredPoints[filteredPoints.Count - 1]) >= minPointDistance)
-                {
-                    filteredPoints.Add(points[i]);
-                }
-            }
-            
-            // Check closure (last point vs first point)
-            if (filteredPoints.Count > 2 && math.distance(filteredPoints[filteredPoints.Count - 1], filteredPoints[0]) < minPointDistance)
-            {
-                filteredPoints.RemoveAt(filteredPoints.Count - 1);
-            }
-
-            points = filteredPoints;
-        }
-
         if (isClockwise)
+            filtered.Reverse();
+
+        return filtered;
+    }
+
+    /// <summary>
+    /// Scatter random points inside an ellipse with random aspect ratio.
+    /// </summary>
+    private List<float2> ScatterRandomPoints(int count, float rad)
+    {
+        float scaleX = UnityEngine.Random.Range(0.6f, 1.6f);
+        float scaleZ = UnityEngine.Random.Range(0.6f, 1.6f);
+
+        var pts = new List<float2>();
+        for (int i = 0; i < count; i++)
         {
-            points.Reverse();
+            // Use rejection sampling inside the ellipse
+            float angle = UnityEngine.Random.Range(0f, Mathf.PI * 2f);
+            float dist = Mathf.Sqrt(UnityEngine.Random.Range(0f, 1f)) * rad;
+            float x = Mathf.Cos(angle) * dist * scaleX;
+            float z = Mathf.Sin(angle) * dist * scaleZ;
+            pts.Add(new float2(x, z));
+        }
+        return pts;
+    }
+
+    /// <summary>
+    /// Compute the 2D convex hull (Andrew's monotone chain).
+    /// Returns float3 points (y=0) in counter-clockwise order.
+    /// </summary>
+    private List<float3> ConvexHull(List<float2> points)
+    {
+        points.Sort((a, b) => a.x != b.x ? a.x.CompareTo(b.x) : a.y.CompareTo(b.y));
+
+        int n = points.Count;
+        if (n < 3) 
+        {
+            var res = new List<float3>();
+            foreach (var p in points) res.Add(new float3(p.x, 0, p.y));
+            return res;
         }
 
-        return points;
+        var hull = new List<float2>();
+
+        // Lower hull
+        for (int i = 0; i < n; i++)
+        {
+            while (hull.Count >= 2 && Cross2D(hull[hull.Count - 2], hull[hull.Count - 1], points[i]) <= 0)
+                hull.RemoveAt(hull.Count - 1);
+            hull.Add(points[i]);
+        }
+
+        // Upper hull
+        int lowerCount = hull.Count + 1;
+        for (int i = n - 2; i >= 0; i--)
+        {
+            while (hull.Count >= lowerCount && Cross2D(hull[hull.Count - 2], hull[hull.Count - 1], points[i]) <= 0)
+                hull.RemoveAt(hull.Count - 1);
+            hull.Add(points[i]);
+        }
+
+        hull.RemoveAt(hull.Count - 1); // Remove last point (duplicate of first)
+
+        var result = new List<float3>();
+        foreach (var p in hull)
+            result.Add(new float3(p.x, 0, p.y));
+        return result;
     }
+
+    /// <summary>
+    /// Displace midpoints of hull edges to create concave sections.
+    /// Displacement is perpendicular to the edge, toward or away from the centroid.
+    /// </summary>
+    private List<float3> MidpointDisplace(List<float3> hull, float strength)
+    {
+        // Calculate centroid
+        float3 centroid = float3.zero;
+        foreach (var p in hull) centroid += p;
+        centroid /= hull.Count;
+
+        var result = new List<float3>();
+        int n = hull.Count;
+
+        for (int i = 0; i < n; i++)
+        {
+            float3 a = hull[i];
+            float3 b = hull[(i + 1) % n];
+
+            result.Add(a);
+
+            // Calculate midpoint
+            float3 mid = (a + b) * 0.5f;
+
+            // Direction from midpoint toward centroid
+            float3 toCenter = math.normalize(centroid - mid);
+
+            // Edge length determines max displacement magnitude
+            float edgeLen = math.distance(a, b);
+
+            // Random displacement: sometimes push inward, sometimes leave roughly on the hull
+            // Bias toward inward displacement to create interesting concavities
+            float displaceMag = UnityEngine.Random.Range(-0.1f, 1.0f) * strength * edgeLen * 0.5f;
+
+            // Add perpendicular jitter for more natural look
+            float3 edgeDir = math.normalize(b - a);
+            float3 perp = new float3(-edgeDir.z, 0, edgeDir.x);
+            float perpJitter = UnityEngine.Random.Range(-0.15f, 0.15f) * edgeLen;
+
+            float3 displaced = mid + toCenter * displaceMag + perp * perpJitter;
+            result.Add(displaced);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Chaikin's corner-cutting subdivision for smooth curves.
+    /// Each iteration doubles the point count and rounds corners.
+    /// </summary>
+    private List<float3> ChaikinSmooth(List<float3> pts)
+    {
+        var result = new List<float3>();
+        int n = pts.Count;
+
+        for (int i = 0; i < n; i++)
+        {
+            float3 p0 = pts[i];
+            float3 p1 = pts[(i + 1) % n];
+
+            // Cut at 25% and 75% of each segment
+            result.Add(math.lerp(p0, p1, 0.25f));
+            result.Add(math.lerp(p0, p1, 0.75f));
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Remove points that are too close together.
+    /// </summary>
+    private List<float3> EnforceMinDistance(List<float3> pts, float minDist)
+    {
+        if (pts.Count == 0) return pts;
+
+        var filtered = new List<float3> { pts[0] };
+        for (int i = 1; i < pts.Count; i++)
+        {
+            if (math.distance(pts[i], filtered[filtered.Count - 1]) >= minDist)
+                filtered.Add(pts[i]);
+        }
+
+        // Check closure: last vs first
+        if (filtered.Count > 2 && math.distance(filtered[filtered.Count - 1], filtered[0]) < minDist)
+            filtered.RemoveAt(filtered.Count - 1);
+
+        return filtered;
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // START / CORNER REFINEMENT
+    // ─────────────────────────────────────────────────────────
 
     private void StraightenStartArea(List<float3> points)
     {
@@ -250,6 +377,10 @@ public class RandomTrackGenerator : MonoBehaviour
         }
     }
 
+    // ─────────────────────────────────────────────────────────
+    // SELF-INTERSECTION & WIDTH-OVERLAP DETECTION
+    // ─────────────────────────────────────────────────────────
+
     #region Self-Intersection Detection
 
     private bool HasSelfIntersection(List<float3> pts)
@@ -274,6 +405,69 @@ public class RandomTrackGenerator : MonoBehaviour
         return false;
     }
 
+    /// <summary>
+    /// Check that no two non-adjacent track segments come closer than 'minClearance'.
+    /// This prevents the road surface from overlapping even when centerlines don't cross.
+    /// </summary>
+    private bool HasWidthOverlap(List<float3> pts, float minClearance)
+    {
+        int n = pts.Count;
+        float sqClear = minClearance * minClearance;
+
+        for (int i = 0; i < n; i++)
+        {
+            float2 a1 = new float2(pts[i].x, pts[i].z);
+            float2 a2 = new float2(pts[(i + 1) % n].x, pts[(i + 1) % n].z);
+
+            // Check against non-adjacent segments (skip self and neighbors)
+            for (int j = i + 3; j < n; j++)
+            {
+                // Also skip if j+1 wraps to be adjacent to i
+                if (i == 0 && j >= n - 2) continue;
+
+                float2 b1 = new float2(pts[j].x, pts[j].z);
+                float2 b2 = new float2(pts[(j + 1) % n].x, pts[(j + 1) % n].z);
+
+                float dist = SegmentToSegmentDistanceSq(a1, a2, b1, b2);
+                if (dist < sqClear) return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Squared distance between two 2D line segments.
+    /// </summary>
+    private float SegmentToSegmentDistanceSq(float2 p1, float2 p2, float2 p3, float2 p4)
+    {
+        // Check all 4 point-to-segment distances and take the minimum
+        float d1 = PointToSegmentDistanceSq(p1, p3, p4);
+        float d2 = PointToSegmentDistanceSq(p2, p3, p4);
+        float d3 = PointToSegmentDistanceSq(p3, p1, p2);
+        float d4 = PointToSegmentDistanceSq(p4, p1, p2);
+
+        float min = math.min(math.min(d1, d2), math.min(d3, d4));
+
+        // If segments actually intersect, distance is 0
+        if (SegmentsIntersect(p1, p2, p3, p4)) return 0f;
+
+        return min;
+    }
+
+    /// <summary>
+    /// Squared distance from point p to line segment (a, b).
+    /// </summary>
+    private float PointToSegmentDistanceSq(float2 p, float2 a, float2 b)
+    {
+        float2 ab = b - a;
+        float2 ap = p - a;
+        float t = math.dot(ap, ab) / math.dot(ab, ab);
+        t = math.clamp(t, 0f, 1f);
+        float2 closest = a + ab * t;
+        float2 diff = p - closest;
+        return math.dot(diff, diff);
+    }
+
     private bool SegmentsIntersect(float2 p1, float2 p2, float2 p3, float2 p4)
     {
         float d1 = Cross2D(p3, p4, p1);
@@ -294,6 +488,10 @@ public class RandomTrackGenerator : MonoBehaviour
     }
 
     #endregion
+
+    // ─────────────────────────────────────────────────────────
+    // ROAD / CHECKPOINTS / CARS (unchanged)
+    // ─────────────────────────────────────────────────────────
 
     void SetupRoadLoft()
     {
