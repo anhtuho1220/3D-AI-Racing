@@ -331,6 +331,52 @@ public class RandomTrackGenerator : MonoBehaviour
         checkpointGenerator.Rebuild();
     }
 
+    [ContextMenu("Flip Track Direction")]
+    public void FlipTrackDirection()
+    {
+        splineContainer = GetComponent<SplineContainer>();
+        if (splineContainer == null || splineContainer.Spline == null) return;
+
+        var spline = splineContainer.Spline;
+        int count = spline.Count;
+        if (count < 2)
+        {
+            Debug.LogWarning("FlipTrackDirection: Not enough knots to flip.");
+            return;
+        }
+
+        // Collect all knots
+        var knots = new BezierKnot[count];
+        for (int i = 0; i < count; i++)
+            knots[i] = spline[i];
+
+        // Rebuild the spline in reversed order with swapped tangents.
+        // When reversing a cubic Bézier spline:
+        //   - The knot order is reversed
+        //   - Each knot's TangentIn becomes the old TangentOut (negated) and vice-versa
+        spline.Clear();
+        for (int i = count - 1; i >= 0; i--)
+        {
+            var k = knots[i];
+            var flipped = new BezierKnot(
+                k.Position,
+                k.TangentOut,   // old out → new in
+                k.TangentIn,    // old in  → new out
+                k.Rotation
+            );
+            spline.Add(flipped, TangentMode.Broken);
+        }
+
+        spline.Closed = true;
+
+        // Rebuild visuals and game objects
+        SetupRoadLoft();
+        PlaceCar();
+        SetupCheckpoints();
+
+        Debug.Log("Track direction flipped successfully.");
+    }
+
     [ContextMenu("Re-Place Cars")]
     public void PlaceCar()
     {

@@ -2,6 +2,16 @@ C:/ProgramData/miniconda3/Scripts/activate
 
 conda activate ml-agents
 
-mlagents-learn config/CarRacingConfig.yaml --run-id=CarRacing_v2 --initialize-from=CarRacing_v1 --torch-device cuda
+conda activate ml-agents
+cd "d:\Projects\3D AI Racing"
 
-mlagents-learn config/CarRacingConfig.yaml --run-id=CarRacing_NoVectors_v2 --initialize-from=CarRacing_NoVectors_v1 --torch-device cuda
+# Press Play in Unity first, then:
+
+# Initialize from previous run
+python python_training/train.py --run-id CarRacing_v2 --initialize-from CarRacing_v1
+
+# Resume from checkpoint
+python python_training/train.py --run-id CarRacing_v2 --resume-from results/CarRacing_v1/checkpoints/checkpoint_100000.pt
+
+# Monitor:
+tensorboard --logdir results/
