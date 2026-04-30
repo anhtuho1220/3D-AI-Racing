@@ -151,9 +151,7 @@ public class RandomTrackGenerator : MonoBehaviour
         return filtered;
     }
 
-    /// <summary>
-    /// Scatter random points inside an ellipse with random aspect ratio.
-    /// </summary>
+    // Scatter random points inside an ellipse with random aspect ratio.
     private List<float2> ScatterRandomPoints(int count, float rad)
     {
         float scaleX = UnityEngine.Random.Range(0.6f, 1.6f);
@@ -172,10 +170,8 @@ public class RandomTrackGenerator : MonoBehaviour
         return pts;
     }
 
-    /// <summary>
-    /// Compute the 2D convex hull (Andrew's monotone chain).
-    /// Returns float3 points (y=0) in counter-clockwise order.
-    /// </summary>
+    // Compute the 2D convex hull (Andrew's monotone chain).
+    // Returns float3 points (y=0) in counter-clockwise order.
     private List<float3> ConvexHull(List<float2> points)
     {
         points.Sort((a, b) => a.x != b.x ? a.x.CompareTo(b.x) : a.y.CompareTo(b.y));
@@ -215,10 +211,8 @@ public class RandomTrackGenerator : MonoBehaviour
         return result;
     }
 
-    /// <summary>
-    /// Displace midpoints of hull edges to create concave sections.
-    /// Displacement is perpendicular to the edge, toward or away from the centroid.
-    /// </summary>
+    // Displace midpoints of hull edges to create concave sections.
+    // Displacement is perpendicular to the edge, toward or away from the centroid.
     private List<float3> MidpointDisplace(List<float3> hull, float strength)
     {
         // Calculate centroid
@@ -261,10 +255,8 @@ public class RandomTrackGenerator : MonoBehaviour
         return result;
     }
 
-    /// <summary>
-    /// Chaikin's corner-cutting subdivision for smooth curves.
-    /// Each iteration doubles the point count and rounds corners.
-    /// </summary>
+    // Chaikin's corner-cutting subdivision for smooth curves.
+    // Each iteration doubles the point count and rounds corners.
     private List<float3> ChaikinSmooth(List<float3> pts)
     {
         var result = new List<float3>();
@@ -283,9 +275,7 @@ public class RandomTrackGenerator : MonoBehaviour
         return result;
     }
 
-    /// <summary>
-    /// Remove points that are too close together.
-    /// </summary>
+    // Remove points that are too close together.
     private List<float3> EnforceMinDistance(List<float3> pts, float minDist)
     {
         if (pts.Count == 0) return pts;
@@ -405,10 +395,8 @@ public class RandomTrackGenerator : MonoBehaviour
         return false;
     }
 
-    /// <summary>
-    /// Check that no two non-adjacent track segments come closer than 'minClearance'.
-    /// This prevents the road surface from overlapping even when centerlines don't cross.
-    /// </summary>
+    // Check that no two non-adjacent track segments come closer than 'minClearance'.
+    // This prevents the road surface from overlapping even when centerlines don't cross.
     private bool HasWidthOverlap(List<float3> pts, float minClearance)
     {
         int n = pts.Count;
@@ -435,9 +423,7 @@ public class RandomTrackGenerator : MonoBehaviour
         return false;
     }
 
-    /// <summary>
-    /// Squared distance between two 2D line segments.
-    /// </summary>
+    // Squared distance between two 2D line segments.
     private float SegmentToSegmentDistanceSq(float2 p1, float2 p2, float2 p3, float2 p4)
     {
         // Check all 4 point-to-segment distances and take the minimum
@@ -454,9 +440,7 @@ public class RandomTrackGenerator : MonoBehaviour
         return min;
     }
 
-    /// <summary>
-    /// Squared distance from point p to line segment (a, b).
-    /// </summary>
+    // Squared distance from point p to line segment (a, b).
     private float PointToSegmentDistanceSq(float2 p, float2 a, float2 b)
     {
         float2 ab = b - a;

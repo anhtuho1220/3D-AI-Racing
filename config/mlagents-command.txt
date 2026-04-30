@@ -1,8 +1,8 @@
 C:/ProgramData/miniconda3/Scripts/activate
 
-conda activate ml-agents
+conda activate mlagents
 
-conda activate ml-agents
+conda activate mlagents
 cd "d:\Projects\3D AI Racing"
 
 # Press Play in Unity first, then:

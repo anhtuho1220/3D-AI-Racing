@@ -189,7 +189,6 @@ public class CarDriverAgent : Agent
         ProcessMovementRewards();
         ProcessCheckpointAlignmentRewards();
 
-        // Apply collision-stay penalty at decision rate, not physics rate
         if (isColliding)
         {
             AddReward(collisionStayPenalty);
@@ -198,7 +197,6 @@ public class CarDriverAgent : Agent
 
     private void ProcessMovementRewards()
     {
-        // Re-calculate the speed and turning per frame!
         currentSpeed = transform.InverseTransformDirection(carRigidbody.linearVelocity).z;
         currentTurning = transform.InverseTransformDirection(carRigidbody.angularVelocity).y;
         

@@ -4,7 +4,6 @@ from torch.distributions import Normal, Categorical
 
 
 class ONNXExporterWrapper(nn.Module):
-    """Wraps PPO network with Unity ML-Agents specific requirements (normalisation, version constants)."""
     def __init__(self, network, mean=None, var=None):
         super().__init__()
         self.network = network
@@ -20,7 +19,6 @@ class ONNXExporterWrapper(nn.Module):
             self.has_normalizer = False
 
     def forward(self, *obs_inputs):
-        # Concatenate inputs from Unity (obs_0, obs_1, ...)
         x = torch.cat(obs_inputs, dim=1) if len(obs_inputs) > 1 else obs_inputs[0]
 
         if self.has_normalizer:
@@ -28,16 +26,9 @@ class ONNXExporterWrapper(nn.Module):
             x = (x - self.mean) / std
             x = torch.clamp(x, -5.0, 5.0)
 
-        # Network automatically outputs [-1, 1] clipped continuous actions
         return self.network(x)
 
 class PPONetwork(nn.Module):
-    """
-    Actor-Critic matching ML-Agents PyTorch architecture:
-      • Separate encoder streams for actor and critic
-      • Linear → Swish (no LayerNorm)
-      • Hybrid continuous + discrete action heads
-    """
 
     def __init__(
         self,
@@ -49,33 +40,37 @@ class PPONetwork(nn.Module):
         self.continuous_size = continuous_size
         self.discrete_branches = discrete_branches
 
-        # ── Actor encoder (policy stream) ──
+        # Actor encoder (policy stream)
         self.actor_encoder = nn.Sequential(
-            nn.Linear(obs_size, 256),
+            nn.Linear(obs_size, 128),
+            nn.SiLU(),
+            nn.Linear(128, 256),
             nn.SiLU(),
             nn.Linear(256, 256),
             nn.SiLU()
         )
 
+        # Critic encoder (value stream)
         self.critic_encoder = nn.Sequential(
-            nn.Linear(obs_size, 256),
+            nn.Linear(obs_size, 128),
+            nn.SiLU(),
+            nn.Linear(128, 256),
             nn.SiLU(),
             nn.Linear(256, 256),
             nn.SiLU()
         )
 
-        # ── Continuous action head ──
+        # Continuous action head
         if continuous_size > 0:
             self.cont_mean = nn.Linear(256, continuous_size)
-            # Shape (1, C) to match ML-Agents log_sigma format
             self.cont_log_std = nn.Parameter(torch.zeros(1, continuous_size))
 
-        # ── Discrete action heads ──
+        # Discrete action heads
         self.disc_heads = nn.ModuleList(
             [nn.Linear(256, branch_size) for branch_size in discrete_branches]
         )
 
-        # ── Value head ──
+        # Value head
         self.value_head = nn.Linear(256, 1)
 
         self._init_weights()
@@ -93,7 +88,7 @@ class PPONetwork(nn.Module):
             nn.init.kaiming_normal_(head.weight, nonlinearity='linear')
 
     def forward(self, obs: torch.Tensor):
-        """Returns deterministic continuous action for ONNX export."""
+        # Returns deterministic continuous action for ONNX export.
         h_actor = self.actor_encoder(obs)
         if self.continuous_size > 0:
             mean = self.cont_mean(h_actor)
@@ -110,7 +105,7 @@ class PPONetwork(nn.Module):
         h_actor = self.actor_encoder(obs)
         h_critic = self.critic_encoder(obs)
 
-        # ── Continuous ──
+        # Continuous
         cont_log_prob = torch.zeros(obs.shape[0], device=obs.device)
         cont_entropy = torch.zeros(obs.shape[0], device=obs.device)
         if self.continuous_size > 0:
@@ -122,7 +117,7 @@ class PPONetwork(nn.Module):
             cont_log_prob = dist_cont.log_prob(cont_actions).sum(dim=-1)
             cont_entropy = dist_cont.entropy().sum(dim=-1)
 
-        # ── Discrete ──
+        # Discrete
         disc_log_prob = torch.zeros(obs.shape[0], device=obs.device)
         disc_entropy = torch.zeros(obs.shape[0], device=obs.device)
         disc_actions_list = []
